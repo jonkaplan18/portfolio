@@ -1,0 +1,849 @@
+---
+title: "Mario_Poster"
+author: "Jon Kaplan"
+date: "9/11/2019"
+output: html_document
+---
+
+#libraries
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(ggplot2)
+#library(devtools)
+#devtools::install_github('cttobin/ggthemr')
+library(ggthemr)
+library(data.table)
+library(corrplot)
+library(lubridate)
+library(dplyr)
+library(plyr)
+library(ggpubr)
+
+```
+
+
+# load data
+```{r cars}
+#videogamesales <- read.csv("vgsales.csv")
+
+videogamesales <- read.csv("CleanVG.csv", na.strings=c("", "NA")) #16719
+videogamesales$Year_of_Release <- as.Date(videogamesales$Year_of_Release, "%Y")
+videogamesales$Year_of_Release <- format(as.Date(videogamesales$Year_of_Release, format="%d/%m/%Y"),"%Y")
+#videogamesales <- na.omit(videogamesales) #6947
+```
+
+clean data
+```{r}
+videogamesalesclean <- na.omit(videogamesales)
+videogamesalesclean$Year_of_Release <- as.Date(videogamesalesclean$Year_of_Release, "%Y")
+videogamesalesclean$Year_of_Release <- format(as.Date(videogamesalesclean$Year_of_Release, format="%d/%m/%Y"),"%Y")
+
+genrecount <- count(videogamesales$Genre)
+p<-ggplot(data=genrecount, aes(x=x, y=freq)) +
+  geom_bar(stat="identity")+
+  geom_text(aes(label=freq), vjust=1.6, color="white", size=3.5)
+p+coord_flip()
+```
+
+
+Color scheme
+
+```{r}
+mario_colours <- c('#5311A6', '#DC0442', '#60D904', '#F4E005', '#310666', '#870027', '#3A8500', '#968900')
+# you have to add a colour at the start of your palette for outlining boxes, we'll use a grey:
+mario_with_grey <- c("#555555", mario_colours)
+# remove previous effects:
+#ggthemr_reset()
+# Define colours for your figures with define_palette
+mario_theme <- define_palette(
+ swatch = mario_with_grey, # colours for plotting points and bars
+ gradient = c(lower = mario_colours[1L], upper = mario_colours[2L]), #upper and lower colours for continuous colours
+ background = "#EEEEEE" #defining a grey-ish background
+)
+# set the theme for your figures:
+ggthemr(mario_theme)
+
+```
+
+
+
+subdata
+```{r}
+#videogamesales <- videogamesales %>% mutate(highlyreviewed=if_else(Critic_Score>quantile(Critic_Score, .95), 1, 0))
+#videogamesales <- videogamesales %>% mutate(topselling=if_else(Global_Sales>quantile(Global_Sales, .95), 1, 0))
+#videogamesales$highlyreviewed <- as.factor(videogamesales$highlyreviewed)
+#videogamesales$topselling <- as.factor(videogamesales$topselling)
+#elitegames <- videogamesales %>% filter(highlyreviewed ==1, topselling==1) 
+#topselling <- videogamesales %>% filter(topselling == 1)
+#highrated <- videogamesales %>% filter(highlyreviewed == 1)
+nintendo <- filter(videogamesales, Publisher == "Nintendo") 
+nintendo_developer <- filter(videogamesales, Developer == "Nintendo") 
+platformers <- videogamesales %>%  filter(Genre == 'Platform') #888 games
+
+nintendoplatformers <- platformers %>% filter(Publisher == "Nintendo") #nintendo has 112 platformer games
+nintendo_esrb <- nintendo %>% filter(Rating != "NA")
+#ea_publisher <- filter(elitegames, Publisher == "Electronic Arts") 
+# critic score
+#292 of 331 high rated games are Nintendo
+
+
+#mario
+mariogames <- videogamesales %>% mutate(Is_Mario = str_extract(Name, "Mario") =='Mario' )
+mariogames <- mariogames %>% filter(Is_Mario == TRUE) #53 mario games total
+marioplatformers <-  platformers %>%  mutate(Is_Mario = str_extract(Name, "Mario") =='Mario' )
+marioplatformers <- marioplatformers %>% filter(Is_Mario == TRUE) #33 mario games that are platformers
+
+#zelda
+zeldagames <- videogamesales %>% mutate(Is_Zelda = str_extract(Name, "Zelda") =='Zelda' )
+zeldagames <- zeldagames %>% filter(Is_Zelda == TRUE) #27 zelda games
+
+#pokemon
+pokemongames <- videogamesales %>% mutate(Is_Pokemon = str_extract(Name, "Pokemon") =='Pokemon' )
+pokemongames <- pokemongames %>% filter(Is_Pokemon == TRUE) #36 pokemon games
+
+
+#donkeykong
+donkeygames <- videogamesales %>% mutate(Is_Donkey = str_extract(Name, "Donkey") =='Donkey' )
+donkeygames <- donkeygames %>% filter(Is_Donkey == TRUE) #15 donkey games
+
+#yoshi
+yoshigames <- videogamesales %>% mutate(Is_Yoshi = str_extract(Name, "Yoshi") =='Yoshi' )
+yoshigames <- yoshigames %>% filter(Is_Yoshi == TRUE) #68 yoshi games
+
+#kirby
+kirbygames <- videogamesales %>% mutate(Is_Kirby = str_extract(Name, "Kirby") =='Kirby' )
+kirbygames <- kirbygames %>% filter(Is_Kirby == TRUE) #96 kirby games
+
+#animalcrossing
+acgames <- videogamesales %>% mutate(Is_AC = str_extract(Name, "Animal Crossing") =='Animal Crossing' )
+acgames <- acgames %>% filter(Is_AC == TRUE) #24 animal crossing games
+
+#metroid
+metroidgames <- videogamesales %>% mutate(Is_Metroid = str_extract(Name, "Metroid") =='Metroid' )
+metroidgames <- metroidgames %>% filter(Is_Metroid == TRUE) #56 metroid games
+
+#fireemblem
+fireemblemgames <- videogamesales %>% mutate(Is_Fire = str_extract(Name, "Fire Emblem") =='Fire Emblem' )
+fireemblemgames <- fireemblemgames %>% filter(Is_Fire == TRUE) #52 fire emblem games
+
+#supersmashbros
+smashgames <- videogamesales %>% mutate(Is_Smash = str_extract(Name, "Smash Bros") =='Smash Bros' )
+smashgames <- smashgames %>% filter(Is_Smash == TRUE) #20 super smash bros games
+
+#starfox
+stargames <- videogamesales %>% mutate(Is_Star = str_extract(Name, "Star Fox") =='Star Fox' )
+stargames <- stargames %>% filter(Is_Star == TRUE) #28 star fox games
+
+#layton
+#starfox
+laytongames <- videogamesales %>% mutate(Is_Layton = str_extract(Name, "Layton") =='Layton' )
+laytongames <- laytongames %>% filter(Is_Layton == TRUE) #28 star fox games
+
+
+
+#wii series
+wiiseries <- videogamesales %>% mutate(Is_Wii = str_extract(Name, "Wii ") =='Wii ' )
+#wiiseries <- videogamesales %>% mutate(Is_Wii = str_extract(Name, "Wii Fit") =='Wii Fitt' )
+wiiseries <- wiiseries %>% filter(Is_Wii == TRUE) #28 star fox games
+tbl <- tbl_df(wiiseries) %>%
+  group_by(Name) %>%
+  tally(Global_Sales) %>%
+  top_n(10)
+
+#franchises
+videogamesales <- videogamesales %>% mutate(Is_Mario = str_extract(Name, "Mario") =='Mario' )
+#videogamesales <- videogamesales %>% mutate(Is_Donkey = str_extract(Name, "Donkey") =='Donkey' )
+videogamesales <- videogamesales %>% mutate(Is_Zelda = str_extract(Name, "Zelda") =='Zelda' )
+videogamesales <- videogamesales %>% mutate(Is_Pokemon = str_extract(Name, "Pokemon") =='Pokemon' )
+franchises <- videogamesales %>% filter(Is_Pokemon ==TRUE | Is_Zelda==TRUE | Is_Mario==TRUE)
+```
+
+
+
+
+
+
+
+
+franchise stats
+```{r}
+#Global stats
+mean(franchises$Global_Sales) #4.755 average global sales
+sum(franchises$Global_Sales) #846.4 total (10% of all total video game sales)
+
+# NA stats
+mean(franchises$NA_Sales) # 2.26 average NA sales
+sum(franchises$NA_Sales) # 402.05 NA sales
+
+# JP stats
+mean(franchises$JP_Sales) # 1.11 average JP sales
+sum(franchises$JP_Sales) # 198.3 JP sales
+
+#europe stats
+mean(franchises$EU_Sales) # 1.135 average EU sales
+sum(franchises$EU_Sales) #202 EU sales
+
+#franchise platformers
+
+# franchises averages
+mean(mariogames$Global_Sales) #  4.821826
+mean(zeldagames$Global_Sales) # 3.054444
+mean(pokemongames$Global_Sales) # 5.817222
+mean(marioplatformers$Global_Sales) # 9.132727
+mean(donkeygames$Global_Sales) # 1.960882
+mean(platformers$Global_Sales) # 0.9325225
+
+# franchises sums
+sum(acgames$Global_Sales) #130.36
+sum(pokemongames$Global_Sales) # 209.42
+sum(mariogames$Global_Sales) # 554.51
+sum(zeldagames$Global_Sales) # 82.47
+sum(marioplatformers$Global_Sales) # 301.38
+sum(donkeygames$Global_Sales) #66.67
+sum(kirbygames$Global_Sales) #149.12
+sum(yoshigames$Global_Sales) #88.36
+sum(metroidgames$Global_Sales) #71.76
+# Mario Games (non-Platformer) 253.13
+
+#846.4 total franchise sum
+
+
+
+209.42/846.4 #24.74% for pokemon games
+554/846.4 # 65.45% for mario games
+82.47/846.4 # 10.00 for zelda games
+253.13/846.4 #29.90% for mario games (non-platformer)
+301.38/846.4 #35.61% for mario platformer games
+66.67/846.4 # 8.00% for donkey kong
+
+
+209.42+554.51+82.47+66.67+149.12+88.36
+
+#notable nintendo franchises 
+130.36+209.42+554.51+82.47+66.67+149.12+88.36 #1352.67 total 8 franchise global sales
+130.36/1352.67 #9.63 for animal crossing
+209.42/1352.67 #15.48% for pokemon games
+554.51/1352.67 #41.00% for mario games
+82.47/1352.67 #6.10% for zelda games
+66.67/1352.67#4.93% for dk games
+149.12/1352.67 #11.02& for kirby games
+88.36/1352.67 #6.53 for yoshi games
+71.76/1352.67 #5.30% for metroid games
+
+
+# top 10 nintendo franchises pie chart
+sum(acgames$Global_Sales) #130.36
+sum(pokemongames$Global_Sales) # 209.42
+sum(mariogames$Global_Sales) # 554.51
+sum(zeldagames$Global_Sales) # 82.47
+sum(marioplatformers$Global_Sales) # 301.38
+sum(donkeygames$Global_Sales) #66.67
+sum(kirbygames$Global_Sales) #149.12
+sum(metroidgames$Global_Sales) #71.76
+sum(stargames$Global_Sales) #47.2
+sum(yoshigames$Global_Sales) #88.36
+sum(smashgames$Global_Sales) #152.52
+sum(fireemblemgames$Global_Sales) #38.08
+# wii sports 205.24 total, 11 games, 18.66 average
+
+# top 10 nintendo franchises
+sum(videogamesales$Global_Sales) #35280.08
+
+#kirby
+149.12
+
+# top 5 nintendo game franchises
+#mario
+554.51/1331.18 #41.65% mario
+
+# super smash bros
+152.52/1331.18 #11.46% super smash
+
+# pokemon games
+209.42/1331.18 #15.73% pokemon
+
+# wii sports
+205.24/1331.18 #15.42% wii sports games
+
+# animal crossing
+209.49/1331.18 #15.74% animal crossing games
+
+#total is 1331.18
+554.51+152.52+209.42+205.24+209.49
+
+
+
+
+```
+
+
+games summary stats
+```{r}
+mean(videogamesales$Global_Sales) # 0.53 average global sales
+sum(videogamesales$Global_Sales) #8920.3 total global sales
+mean(videogamesalesclean$Critic_Score) # 70.26357 average critic score
+```
+
+elite games
+```{r}
+nintendoelitegames <- elitegames %>% filter(Developer == "Nintendo") # nintendo has 10 elite games as developer and 14 games as publisher
+
+mean(elitegames$Global_Sales) # 6.493482 average global sales for elite games
+mean(elitegames$Critic_Score) # 93.30357 avereage critic score for elite games
+
+
+```
+
+topselling
+```{r}
+mean(topselling$Critic_Score) #84.49 average critic score of game that is in top 5% of global sales
+mean(topselling$Global_Sales) # average global sales for top selling game is 6.26
+
+```
+
+highrated
+```{r}
+#highrated <- videogamesales %>% filter(highlyreviewed == 1)
+#ea_publisher <- filter(highrated, Developer == "EA") 
+#highratednintendo <- 
+
+# nintendo has 30 of 331 highrated games as publisher (582 total publishers)
+# nintendo has 13 of 331 highrated games as developer (1696 total developers)
+# EA has 0 highrated games in 95% critic wise
+mariogameshighrated <- highrated %>% mutate(Is_Mario = str_extract(Name, "Mario") =='Mario' )
+
+
+mariogameshighrated <- mariogameshighrated %>% filter(Is_Mario == TRUE) 
+
+highratednintendo <- highrated %>% filter(Publisher=="Nintendo")
+  
+mean(mariogames$Critic_Score) # 77.11 average critic score of mario game
+mean(mariogames$Global_Sales) # 5.15 average global sales of mario game
+mean(marioplatformers$Global_Sales) # 9.80 average global sales of mario platformer game
+mean(marioplatformers$Critic_Score) # 88.31 average critic score of mario platformer game
+mean(highrated$Critic_Score) #92.30 top 5% of games
+mean(highratednintendo$Critic_Score) #92.60 for nintendo highly rated games
+mean(highrated$Global_Sales) #high rated game has average global sales of 2.85 
+platformershighrated <- highrated %>% filter(Genre == "Platform")
+
+```
+
+
+
+genre stats
+```{r}
+
+sum(nintendoconsoles$Global_Sales)
+
+```
+mario games
+```{r}
+#all mario games
+mean(mariogames$Global_Sales) #5.15 average global sales
+mean(mariogames$Critic_Score) #77.11 average critic score
+
+
+#mario platformers
+mean(marioplatformers$Global_Sales) # 9.798462 average global sales
+mean(marioplatformers$Critic_Score) # 88.31 average critic score
+
+```
+
+
+
+
+get percentages 
+```{r}
+
+marioplatformerscount <- count(marioplatformers$Genre)
+marioplatformers = mutate(marioplatformers, 
+                genre_pct = marioplatformers$Genre / count(marioplatformers$Genre),
+                sales_pct = marioplatformers$Global_Sales / sum(marioplatformers$Global_Sales))
+
+
+marioplatformers
+```
+donut chart
+```{r}
+ggdonutchart(df, "value", label = "group")
+
+ggdonutchart(marioplatformers, marioplatformers$Global_Sales, label=marioplatformers$Name)
+
+
+
+ggdonutchart(nintendoconsolesgenres, "Var2", label="Freq")
+# Change color
+# ++++++++++++++++++++++++++++++++
+
+# Change fill color by group
+# set line color to white
+# Use custom color palette
+ ggdonutchart(platformers, "value", label = "group",
+      fill = "", color = "white",
+       palette = c("#00AFBB", "#E7B800", "#FC4E07") )
+
+
+# Change label
+# ++++++++++++++++++++++++++++++++
+
+# Show group names and value as labels
+labs <- paste0(df$group, " (", df$value, "%)")
+ggdonutchart(df, "value", label = labs,
+   fill = "group", color = "white",
+   palette = c("#00AFBB", "#E7B800", "#FC4E07"))
+
+# Change the position and font color of labels
+ggdonutchart(df, "value", label = labs,
+   lab.pos = "in", lab.font = "white",
+   fill = "group", color = "white",
+   palette = c("#00AFBB", "#E7B800", "#FC4E07"))
+
+```
+
+
+console revenue per console
+```{r}
+
+```
+
+nintendo games
+```{r}
+#292 nintendo games
+mean(nintendo$Global_Sales) # 2.91 average global sales as Nintendo publisher
+mean(nintendo$Critic_Score) # 76.27 average critic score as Nintendo publisher
+
+mean(nintendo_developer$Global_Sales) #  7.792647 average global sales as Nintendo developer
+mean(nintendo_developer$Critic_Score) # 80.47059 average critic score as Nintendo developer
+
+```
+
+Nintendo sales trend time series
+```{r}
+#time seris
+ggplot(nintendo, aes(Year_of_Release, Global_Sales)) +
+           geom_point(na.rm=TRUE)
+```
+
+
+
+pie charts
+```{r}
+ggdonutchart(genreplatform, Genre, label = x, lab.pos = c("out", "in"),
+  lab.adjust = 0, lab.font = c(4, "bold", "black"), font.family = "",
+  color = "black", fill = "white", palette = NULL, size = NULL)
+
+
+
+
+genreplatform <- count(nintendo, c("Genre", "Platform", "Year_of_Release"))
+
+```
+
+
+platformers
+
+```{r}
+PlatFormers <- videogamesales %>%  filter(Genre == 'Platform')
+# make new column is mario in the name? boolean. Compare both....
+######################################################
+# mutate new column
+PlatFormers1 <- PlatFormers
+PlatFormers1 <-  PlatFormers %>%  mutate(Is_Mario = str_extract(Name, "Mario") =='Mario' )
+PlatFormers1[PlatFormers1$Is_Mario == NA,] <- FALSE
+PlatFormers1$Is_Mario[is.na(PlatFormers1$Is_Mario)] <- "FALSE"
+is.factor(PlatFormers1$Is_Mario)
+PlatFormers1$Is_Mario <- as.factor(PlatFormers1$Is_Mario)
+PlatFormers1$Year_of_Release <- as.numeric(PlatFormers1$Year_of_Release)
+PlatFormers2 <- PlatFormers1 %>%  filter(Year_of_Release >= 1985)
+ggplot(PlatFormers1, aes(x = Year_of_Release, y = Global_Sales, fill = Is_Mario)) + geom_col()
+ggplot(PlatFormers2, aes(x = Year_of_Release, y = Global_Sales)) + geom_line()
+
+```
+
+
+platformer jon
+```{r}
+platformersnonmario <- videogamesales %>%  filter(Is_Mario == NA) 
+
+platformersnonmario <- videogamesales %>%
+    select(-Platformers) 
+marioplatformers <-  platformers %>%  mutate(Is_Mario = str_extract(Name, "Mario") =='Mario' )
+marioplatformers <- marioplatformers %>% filter(Is_Mario == TRUE)
+
+
+sum(marioplatformers$Global_Sales) #301.38
+sum(nintendoconsoles$Global_Sales) #1937.24
+
+nintendoconsolesgenres <- as.data.frame(table(nintendoconsoles$Genre, nintendoconsoles$Global_Sales))
+
+unique(platformers$Genre)
+
+#NINTENDO PLATFORMER STAT
+sum(nintendoplatformers$Global_Sales) #425.94
+sum(platformers$Global_Sales) #825.08
+425.94/825.08 #51.62% nintendo platofrmers marketshare of all platformers
+
+
+#NINTENDO HANDHELD STAT
+sum(videogamesales$Global_Sales) #35280.08
+sum(handheld$Global_Sales) #1988.6
+sum(nintendohandhelds$Global_Sales) #1640.14
+sum(nintendoconsoles$Global_Sales) #1937.24
+
+unique(nintendoconsoles$Platform)
+
+
+```
+
+
+
+heatmap
+```{r}
+ nba.m <- ddply(nba.m, .(variable), transform,
++     rescale = rescale(value))
+
+elitemelt <- ddply(videogamesales, .(Genre), transform, rescale = rescale(value))
+
+
+p <- ggplot(elitegames, aes(Genre, Name)) + geom_tile(aes(fill = ), colour = "white") + scale_fill_gradient(low = "white", high = "steelblue"))
+
+```
+
+```{r}
+
+colnames(elitegames) <- with(prDes, paste(devStage, gType, sidChar, sep = "_"))
+```
+
+
+subsets
+```{r}
+library(ggplot2)
+vgsales <- read.csv("CleanVG.csv")
+#sum(sport$NA_Sales) = '95.29'
+#sum(sport$EU_Sales) = '89.99'
+#sum(sport$JP_Sales) = '14.67'
+
+#subset(VideoGames,Genre == 'Action')
+#action=subset(VideoGames,Genre == 'Action')
+
+#sum(action$NA_Sales) = '134.38'
+#sum(action$EU_Sales) = '99.62'
+#sum(action$JP_Sales) = '19.69'
+
+#fight=subset(VideoGames,Genre =='Fighting')
+#sum(fight$NA_Sales) = '25.35'
+#sum(fight$EU_Sales) = '10.54'
+#sum(fight$JP_Sales) = '14.07'
+
+#platform=subset(VideoGames,Genre =='Platform')
+#sum(platform$NA_Sales) = '183.82'
+#sum(platform$EU_Sales) = '75.58' 
+#sum(platform$JP_Sales) = '61.99'
+
+#race=subset(VideoGames,Genre =='Racing')
+#sum(race$NA_Sales) = '79.05'
+#sum(race$EU_Sales) = '58.06'
+#sum(race$JP_Sales) = '28.03'
+
+#roleplay=subset(VideoGames,Genre =='Role-Playing')
+#sum(roleplay$NA_Sales) = '105.72'
+#sum(roleplay$EU_Sales) = '79.41' 
+#sum(roleplay$JP_Sales) = '90.31'
+
+#shoot=subset(VideoGames,Genre =='Shooter')
+#sum(shoot$NA_Sales) = '200.48'
+#sum(shoot$EU_Sales) = '98.12'
+#sum(shoot$JP_Sales) = '5.87'
+```
+=
+
+
+handheld
+```{r}
+unique(videogamesales$Platform)
+
+#handhelds <- ("GB", "DS", "GBA", "3DS", "PSP", "PSV", "GG")
+handheld <- videogamesales %>% filter(Platform == "GB" | Platform == "DS" | Platform == "GBA" | Platform == "3DS" | Platform == "PSP" | Platform == "PSV" | Platform == "GG")
+nintendohandhelds <- videogamesales %>% filter(Platform == "GB" | Platform == "DS" | Platform == "GBA" | Platform == "3DS")
+
+
+
+# nintendo marketshare of handhelds
+sum(handheld$Global_Sales) # 1988.56 total global sales for handhelds
+sum(nintendohandhelds$Global_Sales) # 1640.14 
+# 82.48% of all handheld marketshare
+
+mean(handheld$Global_Sales) # 0.3800038
+mean(nintendohandhelds$Global_Sales) # 0.4566091
+
+table(handheld$Platform)
+
+520+2152+98+822 #3592 Nintendo handheld games
+
+3592/5234 #Nintendo comprises 68.63% of all handheld games on market
+
+1209+432 #1641 playstation handheld games
+#348.42 total global sales
+# 0.21 average
+
+#handheld vs console
+sum(videogamesales$Global_Sales) #8920.3 all console sales
+
+sum(nintendoconsoles$Global_Sales) #1937.24 nintendo consoles sales
+sum(nintendohandhelds$Global_Sales) # 1640.14 
+
+1640.14/1937.24 #84.66% of nintendos sales come from its handhelds
+
+nphandheld <- nintendohandhelds %>% filter(Genre == "Platformers")
+
+unique(nintendoconsoles$)
+```
+
+
+
+correlation sales
+```{r}
+columns = c("Global_Sales", "NA_Sales", "EU_Sales", "JP_Sales", "Other_Sales")
+vgamesVariables <- videogamesales[, columns]
+res <- cor(vgamesVariables)
+round(res, 2)
+
+#correlation
+M <- cor(videogamesales[, columns])
+corrplot(M, method="circle")
+```
+
+
+global sales by genre
+```{r}
+library(dplyr)
+library(ggplot2)
+#Histogram of Global sales of the game by genre
+revenue_by_Genre=aggregate(Global_Sales~Genre,videogamesales,sum)
+arrange_by_Genre=arrange(revenue_by_Genre,desc(Global_Sales))
+arrange_by_Genre$Genre = factor(arrange_by_Genre$Genre, levels = arrange_by_Genre$Genre)
+ggplot(arrange_by_Genre,aes(Genre,Global_Sales)) + 
+  geom_bar(fill="blue",stat = "identity") +
+  ggtitle("Video Game - Global Sales by Genre")
+```
+
+global sales by ERB rating
+```{r}
+library(dplyr)
+library(ggplot2)
+#Histogram of Global sales of the game by genre
+revenue_by_Rating=aggregate(Global_Sales~Rating,videogamesales,sum)
+arrange_by_Rating=arrange(revenue_by_Rating,desc(Global_Sales))
+arrange_by_Rating$Rating = factor(arrange_by_Rating$Rating, levels = arrange_by_Rating$Rating)
+
+par(mfrow=c(2,2))
+revenue_by_Rating=aggregate(Global_Sales~Rating,videogamesales,sum)
+arrange_by_Rating=arrange(revenue_by_Rating,desc(Global_Sales))
+arrange_by_Rating$Rating = factor(arrange_by_Rating$Rating, levels = arrange_by_Rating$Rating)
+ggplot(arrange_by_Rating,aes(Rating,Global_Sales)) + 
+  geom_bar(fill="blue",stat = "identity") +
+  ggtitle("Video Game - Global Sales by ESRB Rating (all games)")
+revenue_by_Rating=aggregate(Global_Sales~Rating,highrated,sum)
+arrange_by_Rating=arrange(revenue_by_Rating,desc(Global_Sales))
+arrange_by_Rating$Rating = factor(arrange_by_Rating$Rating, levels = arrange_by_Rating$Rating)
+ggplot(arrange_by_Rating,aes(Rating,Global_Sales)) + 
+  geom_bar(fill="blue",stat = "identity") +
+  ggtitle("Video Game - Global Sales by ESRB Rating (High-rated games)")
+
+```
+
+
+reshape
+```{r}
+library(reshape2)
+vg.long<-melt(means,id.vars="gender")
+```
+
+
+Percent barchart
+```{r}
+
+percent_wall_type <- videogamesales %>%
+  count("Publisher", "Global_Sales") %>%
+  group_by("Publisher") %>%
+  mutate(percent = n / sum(n)) %>%
+  ungroup()
+
+ggplot(countgenres, aes(x = Genre, y = n, fill = n) +
+     geom_bar(stat = "identity", position = "dodge"))
+```
+
+mario platformers marketshare within nintendo
+```{r}
+marioplatformers #33 games
+sum(marioplatformers$Global_Sales) #301.38
+mean(marioplatformers$Global_Sales) #9.13 average mario platformer sales
+nintendoconsoles_pl <- nintendoconsoles %>% filter(Genre=="Platform") #310 platformers
+sum(nintendoconsoles_pl$Global_Sales) #274.1
+mean(nintendoconsoles_pl$Global_Sales) #0.88 average sales for non-mario platform on nintendo consoles
+
+sum(mariogames$Global_Sales) #554.51
+sum(nintendoconsoles$Global_Sales) #1937.24
+554.51/1937.24 #mario games make up 28.62% of all global sales from games on Nintendo consoles
+
+```
+
+percentages genre
+```{r}
+ggdonutchart(countgenres, "freq", label = "Genre==Platform")
+
+
+co
+#all genres
+library(magrittr)
+countgenres <- videogamesales  %>% 
+  dplyr::group_by(Genre, Global_Sales) %>%
+  dplyr::summarise(n = n()) %>%
+  mutate(freq = n / sum(n))
+
+nintendoplatformers
+
+
+videogamesales %>% count(Genre, Global_Sales) %>% summarise(n=n()) %>% mutate(freq = n/sum(n))
+
+```
+Nintendo ESRB ratings by genre
+```{r}
+
+nintendoconsoles <- videogamesales %>% filter(Platform == "GB" | Platform == "DS" | Platform == "GBA" | Platform == "3DS" | Platform == "Wii" | Platform == "NES" | Platform == "SNES" | Platform == "N64" | Platform == "WiiU" | Platform == "GC")
+
+
+nintendoconsoles$Rating <- factor(nintendoconsoles$Rating, levels=c(levels="E", "E10+", "T", "M"))
+
+levels(nintendoconsoles$Rating)
+
+#nintendo_esrb$Rating <- factor(nintendo_esrb$Rating, levels=c(levels="E", "E10+", "T", "M"))
+
+#levels(nintendo_esrb$Rating)
+
+nintendoconsoles <- nintendoconsoles[!is.na(nintendoconsoles$Rating), ]
+
+p4 <- ggplot(data = nintendoconsoles, aes(x = Genre)) +
+    geom_bar(aes(fill = Rating), position = "dodge")+
+  labs(title="Nintendo ESRB Ratings by Genre",
+         x="Genre",
+         y="Count")+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+p4
+```
+
+
+All ESRB ratings by genre
+```{r}
+videogamesales$Rating <- factor(videogamesales$Rating, levels=c(levels="E", "E10+", "T", "M"))
+
+#newdat <- dat[!is.na(dat$Factor), ]
+
+# remove NA factors
+videogamesales <- videogamesales[!is.na(videogamesales$Rating), ]
+
+levels(videogamesales$Rating)
+
+p3 <- ggplot(data = videogamesales, aes(x = Genre)) +
+    geom_bar(aes(fill = Rating), position = "dodge")+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  labs(title="All ESRB Ratings by Genre",
+         x="Genre",
+         y="Count")
+
+p5 <- ggplot(data = videogamesales, aes(x = Genre)) +
+    geom_bar(aes(fill = Rating), position = "dodge")+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  labs(title="All ESRB Ratings by Genre",
+         x="Genre",
+         y="Count")
+
+p3
+```
+
+esrb stats
+```{r}
+head(subset(mtcars, select = 'gear'))
+
+# industry esrb
+count(videogamesales, 'Rating')
+3991+1420+2961+1563 #9935
+3991/9935 #40.17%
+
+# nintendo esrb
+count(nintendoconsoles, 'Rating')
+208/309 #67.31% of Nintendo games have E rating
+
+
+2163+675+642+115 #3595
+2163/3595 #60.17 %
+```
+
+clean esrb
+```{r}
+#tedtalks$TransHasMusic <- factor(tedtalks$TransHasMusic, levels=c(levels(tedtalks$TransHasMusic), "1"))
+
+nintendo_esrb$Rating <- factor(nintendo_esrb$Rating, levels=c(levels="E", "E10+", "T", "M"))
+
+levels(nintendo_esrb$Rating)
+```
+
+common plot for ESRB
+```{r}
+library(ggpubr)
+
+#ncol=2
+
+ggarrange(p3, p4, ncol=2, nrow=2, common.legend = TRUE, legend="top")
+
+#figure <- ggarrange(p3, p4, common.legend=TRUE,
+ #                   labels = c("A", "B",
+ #                   ncol = 2, nrow = 2))
+#figure
+```
+
+ESRB E Rating 
+```{r}
+
+```
+
+```{r}
+ggplot(data = nintendo_esrb, aes(x = Genre)) +
+    geom_bar(aes(fill = Rating), position = "dodge")+
+  labs(title="Nintendo ESRB Ratings by Genre",
+         x="Genre",
+         y="Count")
+```
+
+
+nintendo publishers
+```{r}
+nintendoconsole <- 
+table(nintendo$Publisher)
+
+
+
+unique(videogamesales$Platform)
+
+
+nintendoconsoles <- videogamesales %>% filter(Platform == "GB" | Platform == "DS" | Platform == "GBA" | Platform == "3DS" | Platform == "Wii" | Platform == "NES" | Platform == "SNES" | Platform == "N64" | Platform == "WiiU" | Platform == "GC")
+
+nintendo_console_publishers <- as.data.frame(table(nintendoconsoles$Publisher))
+
+sum(nintendo_console_publishers$Freq) #6271 total nintendo games across all consoles 
+unique(nintendo_console_publishers$Var1) # 582 unique nintendo console publishers
+
+# nintendo is a  publisher in 706 of the 6271 total nintendo games across nintendo consoles games. 11.26% of all nintendo games are published by nintendo
+
+
+BCI_percent <- BCI / rowSums(BCI) * 100
+
+nintendo_percent <- nintendoconsoles/rowSums(nintendoconsoles) *100
+
+
+```
+
+

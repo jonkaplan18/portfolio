@@ -1,0 +1,309 @@
+---
+#title: "AssociationRuleMining.Rmd"
+#author: "Richard Paterson"
+#date: "May25, 2019"
+#course: IST 707 Data Analytics"
+---
+
+## Association Rule Mining
+
+
+```{r setup, include=TRUE}
+
+#install.packages("nnet")
+
+knitr::opts_chunk$set(echo = FALSE)
+## ONCE: install.packages("wordcloud")
+library(wordcloud)
+#install.packages('tm')
+library(tm)
+library(stringr)
+#install.packages("SnowballC")
+library(SnowballC)
+## ONCE: install.packages("slam")
+library(slam)
+library(cluster)
+#library(rsq, quietly=T)
+#library(plyr, quietly=T)
+library(dplyr, quietly=T)
+#library(sqldf, quietly=T)
+#library(ggplot2, quietly=T)
+#library(stats, quietly=T)
+#library(reshape2, quietly=T)
+library(RWeka, quietly=T)
+#install.packages("partykit") #once only
+#library(partykit)
+#using numerically converted attributes (sans churn column)
+#install.packages("factoextra")
+library(factoextra)
+#install.packages("stringr") # once only
+library(stringr)
+library(arulesViz, quietly=T)
+#library(stringi, quietly=T)
+#e1071 for svm
+#install.packages("e1071")
+#library(e1071)
+# for randomFOrest
+#library(randomForest)
+# https://www.rdocumentation.org/packages/kernlab/versions/0.9-27/topics/ksvm
+#library(kernlab, quietly=T) #ksvm
+```
+
+# IST 707 - Final Project - Associated Rule Mining
+
+## Step 1: Read Ted Transformed file and extract tags for mining
+
+
+```{r readindata1}
+
+cat ('FP : Start')
+
+setwd('C:/Users/Richpat/Documents/@syracuse coursework/@IST 707 Data Analytics (R)/finalproject')
+
+#Read the data in and create "basket" of tags for Apriori
+
+InFile="./ted-talks/tedtfm.csv"
+tedtfm<-read.csv(InFile, sep=",", na.string=c(""))
+
+mx<-as.matrix(tedtfm$tags)
+
+mx1<-mx %>% str_replace_all('\\[','') %>% str_replace_all('\'','') %>% str_replace_all('\\]','') %>% str_replace_all(' ','') %>% tolower()
+str(mx1)
+
+mxo<-mx1 %>% str_replace_all('\"','') %>% tolower()
+head(mxo)
+
+write.table(mxo, './ted-talks/tedtags.csv', row.names=FALSE, quote=FALSE)
+tagstr<-read.transactions('./ted-talks/tedtags.csv', format = "basket", sep=",", skip = 1)
+
+```
+
+# Understand words
+
+```{r wordpresence, fig.width=10,fig.height=6}
+
+library(RColorBrewer)
+
+itemFrequencyPlot(tagstr,topN=40,type="absolute",col=brewer.pal(8,'Pastel2'), main="Absolute Item Frequency Plot")
+
+itemFrequencyPlot(tagstr,topN=40,type="relative",col=brewer.pal(8,'Pastel2'), main="Relative Item Frequency Plot")
+
+
+```
+
+```{r readindata2}
+
+cat ('FP : Start')
+
+setwd('C:/Users/Richpat/Documents/@syracuse coursework/@IST 707 Data Analytics (R)/finalproject')
+
+#Read the data in and create "basket" of tags for Apriori
+
+InFile="./ted-talks/tedtfm.csv"
+tedtfm<-read.csv(InFile, sep=",", na.string=c(""))
+
+tedtfm$TXThighrated<-ifelse(tedtfm$highrated==1,'highlyrated', 'nothighlyrated')
+tedtfm$TXTpopularity<-ifelse(tedtfm$popularity==1,'mostpopular', 'lesspopular')
+
+#mx<-as.matrix(tedtfm$tags)
+mx<-as.matrix(paste(tedtfm$TXTpopularity,paste(tedtfm$TXThighrated, tedtfm$tags, sep = ","), sep = ",") )
+
+mx1<-mx %>% str_replace_all('\\[','') %>% str_replace_all('\'','') %>% str_replace_all('\\]','') %>% str_replace_all(' ','') %>% tolower()
+str(mx1)
+
+mxo<-mx1 %>% str_replace_all('\"','') %>% tolower()
+head(mxo)
+
+write.table(mxo, './ted-talks/tedtags.csv', row.names=FALSE, quote=FALSE)
+tagstr<-read.transactions('./ted-talks/tedtags.csv', format = "basket", sep=",", skip = 1)
+
+#inspect(tagstr)
+str(tagstr)
+
+tagstr
+
+summary(tagstr)
+
+```
+
+
+# Step 2: RUn Apriori and show top rules
+
+```{r apriorifromHW3}
+
+rules <- apriori(tagstr, parameter = list(supp = 0.001, conf = 0.9,maxlen=4))
+#rules<-sort(rules, by="confidence", decreasing=TRUE)
+arules::inspect(rules)
+arules::inspect(head(rules, n = 20, by = "confidence"))
+arules::inspect(head(rules, n = 20, by = "lift"))
+arules::inspect(head(rules, n = 20, by = "support"))
+
+# Show the top 5 rules, but only 2 digits
+options(digits=2)
+arules::inspect(rules, n=5)
+
+subset.rules <- which(colSums(is.subset(rules, rules)) > 1) # get subset rules in vector
+length(subset.rules)  #> 3913
+rules <- rules[-subset.rules] # remove subset rules
+length(rules)  #> 3913
+
+```
+```{r scatterplotfromHW3, fig.width=10,fig.height=6}
+# rules with confidence > .4
+
+subRules<-rules[quality(rules)$confidence>0.9]
+
+plot(subRules)
+
+```
+
+
+```{r twokeyfromHW3, fig.width=10,fig.height=6}
+
+plot(subRules, method="two-key plot")
+
+```
+
+```{r GraphfromHW3, fig.width=10,fig.height=6}
+
+top10subRules <- head(subRules, n = 8, by = "confidence")
+
+plot(top10subRules, method = "graph",  engine = "htmlwidget")
+
+```
+```{r ParacordfromHW3, fig.width=10,fig.height=6}
+
+# Filter top 20 rules with highest lift
+
+subRules2<-head(subRules, n=20, by="lift")
+
+plot(subRules2, method="paracoord")
+
+```
+
+```{r GroupedMatrixfromHW3, fig.width=10,fig.height=6}
+
+set.seed (800)
+subRules2<-head(subRules, n=1000, by="lift")
+
+plot(subRules2, method="grouped", control=list(k=40))
+
+```
+```{r graphfromHW3, fig.width=10,fig.height=6}
+
+#subrules <- head(sort(rules, by = "confidence"), 10)
+
+subrules <- subset(rules, rhs %oin% c("mostpopular", "highlyrated"))
+arules::inspect(subrules)
+subrules <- subset(subrules, !(lhs %oin% c("mostpopular", "lesspopular")))
+
+subrules <- head(sort(subrules, by = "confidence"), 12)
+
+plot(subrules, method = "graph", control = list( engine = "graphviz"))
+
+```
+
+```{r}
+MPrules <- apriori(tagstr, parameter = list(supp=0.001, conf=0.9,maxlen=4),appearance = list(default="lhs",rhs=c("mostpopular", "highlyrated")))
+
+arules::inspect(head(MPrules, n = 20, by = "confidence"))
+arules::inspect(head(MPrules, n = 20, by = "lift"))
+arules::inspect(head(MPrules, n = 20, by = "support"))
+
+# Show the top 5 rules, but only 2 digits
+#options(digits=2)
+#arules::inspect(MPrules, n=5)
+
+subset.rules <- which(colSums(is.subset(MPrules, MPrules)) > 1) # get subset rules in vector
+length(subset.rules)  #> 3913
+MPrules <- MPrules[-subset.rules] # remove subset rules
+length(MPrules)  #> 3913
+```
+```{r MPandHRplot, fig.width=10,fig.height=6}
+
+subrules <- head(sort(MPrules, by = "confidence"), 10)
+
+plot(subrules, method = "graph", control = list( engine = "graphviz"))
+
+
+```
+
+```{r}
+HRLPrules <- apriori(tagstr, parameter = list(supp=0.001, conf=0.9,maxlen=4),appearance = list(default="lhs",rhs=c("lesspopular", "highlyrated")))
+
+arules::inspect(head(HRLPrules, n = 20, by = "confidence"))
+arules::inspect(head(HRLPrules, n = 20, by = "lift"))
+arules::inspect(head(HRLPrules, n = 20, by = "support"))
+
+# Show the top 5 rules, but only 2 digits
+#options(digits=2)
+#arules::inspect(MPrules, n=5)
+
+subset.rules <- which(colSums(is.subset(HRLPrules, HRLPrules)) > 1) # get subset rules in vector
+length(subset.rules)  #> 3913
+HRLPrules <- HRLPrules[-subset.rules] # remove subset rules
+length(HRLPrules)  #> 3913
+```
+```{r HRLPandHRplot, fig.width=10,fig.height=6}
+
+subrules <- head(sort(HRLPrules, by = "confidence"), 10)
+
+plot(subrules, method = "graph", control = list( engine = "graphviz"))
+
+
+```
+
+```{r MPNHrules}
+MPNHrules <- apriori(tagstr, parameter = list(supp=0.001, conf=0.9,maxlen=4),appearance = list(default="lhs",rhs=c("mostpopular", "nothighlyrated")))
+
+arules::inspect(head(MPNHrules, n = 20, by = "confidence"))
+arules::inspect(head(MPNHrules, n = 20, by = "lift"))
+arules::inspect(head(MPNHrules, n = 20, by = "support"))
+
+# Show the top 5 rules, but only 2 digits
+#options(digits=2)
+#arules::inspect(MPrules, n=5)
+
+subset.rules <- which(colSums(is.subset(MPNHrules, MPNHrules)) > 1) # get subset rules in vector
+length(subset.rules)  #> 3913
+MPNHrules <- MPNHrules[-subset.rules] # remove subset rules
+length(MPNHrules)  #> 3913
+```
+
+```{r MPNHandHRplot, fig.width=10,fig.height=6}
+
+subrules <- head(sort(MPNHrules, by = "confidence"), 10)
+
+plot(subrules, method = "graph", control = list( engine = "graphviz"))
+
+
+```
+
+```{r LPNHrules}
+LPNHrules <- apriori(tagstr, parameter = list(supp=0.001, conf=0.9,maxlen=4),appearance = list(default="lhs",rhs=c("lesspopular", "nothighlyrated")))
+
+arules::inspect(head(LPNHrules, n = 20, by = "confidence"))
+arules::inspect(head(LPNHrules, n = 20, by = "lift"))
+arules::inspect(head(LPNHrules, n = 20, by = "support"))
+
+# Show the top 5 rules, but only 2 digits
+#options(digits=2)
+#arules::inspect(MPrules, n=5)
+
+subset.rules <- which(colSums(is.subset(LPNHrules, LPNHrules)) > 1) # get subset rules in vector
+length(subset.rules)  #> 3913
+MPNHrules <- LPNHrules[-subset.rules] # remove subset rules
+length(LPNHrules)  #> 3913
+```
+
+
+```{r MPNHandHRplot, fig.width=10,fig.height=6}
+
+subrules <- head(sort(LPNHrules, by = "confidence"), 10)
+
+plot(subrules, method = "graph", control = list( engine = "graphviz"))
+
+
+```
+
+# END

@@ -1,0 +1,211 @@
+---
+#title: "PredictRating"
+#author: "Richard Paterson"
+#date: "JUne 6, 2019"
+#course: IST 707 Data Analytics"
+---
+
+## The objective of this code is to Predict Rating
+
+
+```{r setup, include=TRUE}
+
+#install.packages("nnet")
+
+knitr::opts_chunk$set(echo = FALSE)
+## ONCE: install.packages("wordcloud")
+library(wordcloud)
+#install.packages('tm')
+library(tm)
+library(stringr)
+#install.packages("SnowballC")
+library(SnowballC)
+## ONCE: install.packages("slam")
+library(slam)
+library(cluster)
+#library(rsq, quietly=T)
+#library(plyr, quietly=T)
+library(dplyr, quietly=T)
+#library(sqldf, quietly=T)
+#library(ggplot2, quietly=T)
+#library(stats, quietly=T)
+#library(reshape2, quietly=T)
+library(RWeka, quietly=T)
+#install.packages("partykit") #once only
+#library(partykit)
+#using numerically converted attributes (sans churn column)
+#install.packages("factoextra")
+library(factoextra)
+#install.packages("stringr") # once only
+library(stringr)
+library(arulesViz, quietly=T)
+#library(stringi, quietly=T)
+#e1071 for svm
+#install.packages("e1071")
+#library(e1071)
+# for randomFOrest
+#library(randomForest)
+# https://www.rdocumentation.org/packages/kernlab/versions/0.9-27/topics/ksvm
+#library(kernlab, quietly=T) #ksvm
+```
+
+# IST 707 - Data Analytics Final Project
+
+
+```{r readindata}
+
+cat ('FP : Start')
+
+setwd('C:/Users/Richpat/Documents/@syracuse coursework/@IST 707 Data Analytics (R)/finalproject')
+
+#Read the data in
+
+InFile="./ted-talks/ted_main.csv"
+tedmain<-read.csv(InFile, sep=",", na.string=c(""), stringsAsFactors=FALSE)
+
+InFile="./ted-talks/transcripts.csv"
+tedtranscripts<-read.csv(InFile, sep=",", na.string=c(""), stringsAsFactors=FALSE)
+
+tedall <- left_join(tedmain, tedtranscripts, by = "url")
+tedall$date <- as.POSIXct(tedall$published_date,  origin="1970-01-01")
+
+
+
+```
+#
+
+```{r standardizeRatings1, fig.width=10,fig.height=6}
+
+library (jsonlite)
+length(tedmain[,1])
+
+ted1<-tedmain
+len <- ted1 %>% summarise(sno = n())
+ted1$sno <- seq(1,as.numeric(len))
+
+#reading the values as json to get the values in rows
+df1 <- c()
+for (i in 1:length(tedmain[,1]))
+  {
+    df <- fromJSON(str_replace_all(ted1$rating[i],"'",'"'))
+    df$sno <- i 
+    df1 <- rbind(df,df1)
+}
+#Creating a table with the ratings
+ted_ratings <- df1
+
+#Checking the distinct rating types available
+df %>% distinct(name)
+
+```
+```{r standardizeRatings2}
+#Classified the distinct rating types to positive, negative and neutral ratings
+negative_words <- c('Unconvincing','Confusing','Obnoxious','Longwinded')
+positive_words <- c('Informative','Inspiring','Fascinating','Ingenious','Beautiful','Persuasive','Jaw-dropping','Courageous','Funny')
+
+df1$ratings_type <- ifelse(df1$name %in% unlist(negative_words),'negative',ifelse(df1$name %in% unlist(positive_words),'positive',ifelse(df1$name == 'OK','neutral',' ')))
+
+```
+
+```{r standardizeRatings3}
+library(tidyr)
+ted2 <- df1 %>% group_by(sno,ratings_type) %>% 
+  summarise(count_rating_type = sum(count)) %>% spread(ratings_type,count_rating_type) %>% ungroup() %>%
+  left_join(ted1,by = "sno")
+
+```
+
+## https://martakolczynska.com/post/ted-talks/
+https://www.tidytextmining.com/sentiment.html
+
+```{r sentiment}
+
+library(tidyverse) # combine and reshape data
+library(tidytext) # tokenize
+library(stringr) # working with strings
+
+tedall <- left_join(tedmain, tedtranscripts, by = "url")
+tedall$date <- as.POSIXct(tedall$film_date,  origin="1970-01-01")
+#tedall <- filter(tedall, date > as.Date("2008-01-01"))
+ted_words <- tedall %>%
+  unnest_tokens(word, transcript) %>%
+  select(url, word)
+
+ted_sentiment <- ted_words %>% 
+  inner_join(get_sentiments("afinn")) %>% 
+  group_by(index = url) %>% 
+  summarise(sentiment = sum(score))
+
+ted_sentiment<-as.data.frame(ted_sentiment)
+colnames(ted_sentiment)<-c('url', 'sentiment')
+
+
+
+```
+
+
+
+```{r buildxldataset}
+
+ted2x<-as.data.frame(ted2$url)
+ted2x$negative<-ted2$negative
+ted2x$neutral<-ted2$neutral
+ted2x$positive<-ted2$positive
+
+colnames(ted2x)<-c('url', 'negativecount', 'neutralcount', 'positivecount')
+
+ted3 <- tedall %>% 
+  left_join(ted_sentiment, by="url")
+
+tedtfm <- ted3 %>% 
+  left_join(ted2x, by="url")
+
+#add column for pupolarity
+
+tedtfm <- tedtfm %>% mutate(popularity=if_else(views>quantile(views, .75), 1, 0))
+
+#
+
+tedtfm <- tedtfm %>% mutate(highrated=if_else(positivecount>negativecount, 1,0))
+
+# type of talk enrichmant
+
+tedtfm$TransHasVideo<-((str_extract(tedtfm$transcript, "(Video)"))=="Video")*1
+tedtfm$TransHasVideo[is.na(tedtfm$TransHasVideo)] <- 0
+tedtfm$TransHasApplause<-((str_extract(tedtfm$transcript, "(Applause)"))=="Applause")*1
+tedtfm$TransHasApplause[is.na(tedtfm$TransHasApplause)] <- 0
+tedtfm$TransHasMusic<-((str_extract(tedtfm$transcript, "(Music)"))=="MUsic")*1
+tedtfm$TransHasMusic[is.na(tedtfm$TransHasMusic)] <- 0
+tedtfm$TransHasLaughter<-((str_extract(tedtfm$transcript, "(Laughter)"))=="Laughter")*1
+tedtfm$TransHasLaughter[is.na(tedtfm$TransHasLaughter)] <- 0
+
+```
+
+# show boxplots for "new" data
+
+```{r summarise}
+
+cat ('\nDescriptive Stats for summarized count of Negative Standardized Sentiment\n')
+summary(tedtfm$negative)
+cat ('\nDescriptive Stats for summarized count of Neutral Standardized Sentiment\n')
+summary(tedtfm$neutral)
+cat ('\nDescriptive Stats for summarized count of Positive Standardized Sentiment\n')
+summary(tedtfm$positive)
+
+par(mfrow = c(3,1))
+#boxplot(tedtfm$sentiment, main='Transcript Sentiment')
+boxplot(tedtfm$negative, main='Rating Negative', horizontal=TRUE)
+boxplot(tedtfm$neutral, main='Rating Neutral', horizontal=TRUE)
+boxplot(tedtfm$positive, main='Rating Positive', horizontal=TRUE)
+
+
+```
+```{r}
+write.csv(tedtfm, './ted-talks/tedtfm.csv' , row.names=FALSE, col.names=TRUE, fileEncoding='utf-8')
+
+```
+
+
+
+
+# END

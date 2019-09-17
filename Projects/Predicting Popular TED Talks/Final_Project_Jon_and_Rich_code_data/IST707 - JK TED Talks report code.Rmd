@@ -1,0 +1,2934 @@
+---
+title: "Preprocessing one step"
+author: "Jon Kaplan"
+date: "6/16/2019"
+output: word_document
+---
+Load libraries
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(textclean)
+library(gmodels)
+library(animation)
+library(ggpubr)
+library(rattle)
+library(GGally)
+library(rpart.plot)
+library(rpart)
+library(kernlab)
+library(ggplot2)
+library(e1071)
+library(tidyverse)
+library(readr)
+library(data.table)
+library(magrittr)
+library(DT)
+library(stringr)
+library(wordcloud)
+library(wordcloud2)
+library(tm)
+library(SnowballC)
+library(dplyr)
+library(tidytext) 
+library(tidyr) 
+library(widyr)
+library(quanteda)
+library(ggrepel) 
+library(gridExtra) 
+library(knitr) 
+library(kableExtra) 
+library(formattable) 
+library(yarrr)  
+library(radarchart) 
+library(igraph) 
+library(ggraph)
+library(anytime)
+library(Rmisc)
+library(Hmisc)
+library(reshape2)
+library(scales)
+library(RColorBrewer)
+library(plotly)
+library(Cairo)
+library(tidytext)
+library(stringr)
+library(dplyr)
+library(tidyr)
+library(wordcloud)
+library(ggplot2)
+library(splitstackshape)
+library(data.table)
+library(SnowballC)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(e1071)
+library(caret)
+library(C50)
+library(prediction)
+require(caTools)
+require(spls)
+library(ipred)
+library(ElemStatLearn)
+library(klaR)
+library(rgr)
+library(RColorBrewer)
+library(plyr)
+library(arules)
+library(arulesViz)
+library(ggplot2) # Data visualisation
+library(reshape2)
+library(corrplot)
+library(stringr) # String manipulation
+library(anytime)
+library(data.table)
+library(randomForest)
+library(tokenizers)
+
+```
+
+##PREPROCESSING (just run entire chunk)
+
+First, make sure working directory is set to a folder that contains these three files:
+ted_main.csv
+transcripts.csv
+tedtfm.csv
+
+```{r}
+#1) Load the data (tedtalks created, 23 variables after)
+
+
+
+#check what's in tidyverse package
+#tidyverse_packages()
+
+#set working directory
+getwd()
+setwd("/Users/Jon/OneDrive/Documents/Syracuse/Spring 2019/IST 707 Data Analytics/Final Project/ted talk/")
+
+#1) load tedtalks
+tedtalks <- read.csv("ted_main.csv", stringsAsFactors=FALSE)
+
+#2) load transcript
+tedtranscripts <- read.csv("transcripts.csv", stringsAsFactors=FALSE)
+
+
+#3) read in tedtfm and add columns from it, 6 columns added
+teddfm <- read.csv("tedtfm.csv")
+teddfm2 <- teddfm %>% dplyr::select(url, transcript, sentiment, TransHasVideo, TransHasApplause, TransHasMusic, TransHasLaughter)
+tedtalks <- tedtalks %>% inner_join(teddfm2, by="url")
+#tedtalks <- tedtalks %>% inner_join(tedtranscripts, by="url")
+
+#make factors 
+tedtalks$TransHasVideo <- as.factor(tedtalks$TransHasVideo)
+tedtalks$TransHasApplause <- as.factor(tedtalks$TransHasApplause)
+tedtalks$TransHasLaughter <- as.factor(tedtalks$TransHasLaughter)
+tedtalks$TransHasMusic <- as.factor(tedtalks$TransHasMusic) #only has one level, need to add second level
+#add new level to factor example
+#iris$Species <- factor(iris$Species, levels = c(levels(iris$Species), "Echeveria"))
+#add level to TransHasMusic
+#tedtalks$TransHasMusic <- factor(tedtalks$TransHasMusic, levels=c(levels(tedtalks$TransHasMusic), "1"))
+
+#remove unneeded dataframes
+#rm(teddfm, teddfm2, tedtranscripts)
+
+colnames(tedtalks)
+
+
+#remove url column
+#tedtalks <- tedtalks[,-16]
+#colnames(tedtalks)
+#str(tedtalks)
+#glimpse(tedtalks)
+
+#get rid of unnecessary columns
+#URL column
+
+#join transcript and main talks
+#tedtalks$url <- as.character(tedtalks$url)
+#tedtranscripts$url <- as.character(tedtranscripts$url)
+#tedtalks <- tedtalks %>% inner_join(tedtranscripts, by="url")
+
+
+#all records in ted talks that not in ted transcripts below:
+#anti-join in dplyr, return all the records from one dataframe that do not have match in other dataframe
+#tedtalksleftovers <- tedtalks %>% anti_join(tedtranscripts, by="url")
+
+
+
+##Dealing with each column in tedtalks:
+
+#2) primary key column (tedtalks=24 variables after)
+
+tedtalks <- tedtalks %>% mutate(id=seq(1, nrow(.))) %>% dplyr::select(id, everything())
+
+
+
+#3) film_date column (two more columns added= 26 variables now)
+
+tedtalks$film_date <- anydate(tedtalks$film_date)
+
+#adding filming month and filming year columns to tedtalks:
+tedtalks$filming_month <- as.numeric(format(tedtalks$film_date, format= "%m"))
+tedtalks$filming_year <- as.numeric(format(tedtalks$film_date, format = "%Y"))
+
+
+
+#4) published_date column (3 new columns added, 29 variables now)
+
+#convert date to date/time format:
+#tedtalks$published_date <- as.POSIXct(tedtalks$published_date, origin="1970-01-01")
+
+#convert date to date only format:
+#tedtalks$published_date <- as.Date(as.POSIXct(tedtalks$published_date, origin="1970-01-01"))
+
+#tedtalks <- tedtalks %>% select(-datepub)
+#tedtalks <- tedtalks[,-25]
+colnames(tedtalks)
+
+#convert dates into variables
+tedtalks$published_date = anydate(tedtalks$published_date) #updates published_date to datetime format
+tedtalks$month = month(tedtalks$published_date) #adds month variable
+tedtalks$year = year(tedtalks$published_date) #adds year variable
+tedtalks$day = weekdays(tedtalks$published_date,abbreviate = TRUE) #adds day variable
+
+#turn day into factor
+tedtalks$day <- as.factor(tedtalks$day)
+
+
+
+#5) ratings column (cleanup functions)
+
+rating_to_list <- function(vec){
+x <- str_extract_all(vec, "\\w+")
+x <- str_replace_all(x, "id", " ")
+x <- str_replace_all(x, "name", " ")
+x <- str_replace_all(x, "count", " ")
+x <- unlist(str_extract_all(x, "\\w+"))
+x <- setdiff(x, "c")
+return (x)
+}
+
+suppressWarnings(tedtalks$rating_list <- lapply(tedtalks$ratings, rating_to_list))
+unlist(tedtalks$rating_list[1])
+which(unlist(tedtalks$rating_list[18]) == "Beautiful")
+unlist(tedtalks$rating_list[1])[which(unlist(tedtalks$rating_list[1]) == "Beautiful")+1]
+
+
+
+#find rating count
+find_rating_count <- function(vec, rat_tag){
+  count <- unlist(vec)[which(unlist(vec) == rat_tag) +1]
+  return (count)
+}
+
+
+
+
+#6) Breaking up ratings into single columns (41 variables after)
+
+
+#Now we will break up the 14 ratings into their own individual columns into the dataframe (38 variables now)
+
+#funny
+tedtalks$funny <- sapply(tedtalks$rating_list, find_rating_count, rat_tag = "Funny")
+tedtalks$funny <- replace(tedtalks$funny,is.na(tedtalks$funny),"0")
+tedtalks$funny <- as.numeric(tedtalks$funny)
+tedtalks$funny <- replace(tedtalks$funny,is.na(tedtalks$funny),0)
+
+#beautiful
+tedtalks$beautiful <- sapply(tedtalks$rating_list, find_rating_count, rat_tag = "Beautiful")
+tedtalks$beautiful <- replace(tedtalks$beautiful,is.na(tedtalks$beautiful),"0")
+tedtalks$beautiful <- as.numeric(tedtalks$beautiful)
+tedtalks$beautiful <- replace(tedtalks$beautiful,is.na(tedtalks$beautiful),0)
+
+#confusing
+tedtalks$confusing <- sapply(tedtalks$rating_list, find_rating_count, rat_tag = "Confusing")
+tedtalks$confusing <- replace(tedtalks$confusing,is.na(tedtalks$confusing),"0")
+tedtalks$confusing <- as.numeric(tedtalks$confusing)
+tedtalks$confusing <- replace(tedtalks$confusing,is.na(tedtalks$confusing),0)
+
+#jawdropping
+tedtalks$jawdropping <- sapply(tedtalks$rating_list, find_rating_count, rat_tag = "dropping")
+tedtalks$jawdropping <- replace(tedtalks$jawdropping,is.na(tedtalks$jawdropping),"0")
+tedtalks$jawdropping <- as.numeric(tedtalks$jawdropping)
+tedtalks$jawdropping <- replace(tedtalks$jawdropping,is.na(tedtalks$jawdropping),0)
+
+
+#informative
+tedtalks$informative <- sapply(tedtalks$rating_list, find_rating_count, rat_tag = "Informative")
+tedtalks$informative <- replace(tedtalks$informative,is.na(tedtalks$jawdropping),"0")
+tedtalks$informative <- as.numeric(tedtalks$informative)
+tedtalks$informative <- replace(tedtalks$informative,is.na(tedtalks$informative),0)
+
+#ingenius
+tedtalks$ingenius <- sapply(tedtalks$rating_list, find_rating_count, rat_tag = "Informative")
+tedtalks$ingenius <- replace(tedtalks$ingenius,is.na(tedtalks$ingenius),"0")
+tedtalks$ingenius <- as.numeric(tedtalks$ingenius)
+tedtalks$ingenius <- replace(tedtalks$ingenius,is.na(tedtalks$ingenius),0)
+
+#obnoxious
+tedtalks$obnoxious <- sapply(tedtalks$rating_list, find_rating_count, rat_tag = "Obnoxious")
+tedtalks$obnoxious <- replace(tedtalks$obnoxious,is.na(tedtalks$obnoxious),"0")
+tedtalks$obnoxious <- as.numeric(tedtalks$obnoxious)
+tedtalks$obnoxious <- replace(tedtalks$obnoxious,is.na(tedtalks$obnoxious),0)
+
+#fascinating
+tedtalks$fascinating <- sapply(tedtalks$rating_list, find_rating_count, rat_tag = "Fascinating")
+tedtalks$fascinating <- replace(tedtalks$fascinating,is.na(tedtalks$fascinating),"0")
+tedtalks$fascinating <- as.numeric(tedtalks$fascinating)
+tedtalks$fascinating <- replace(tedtalks$fascinating,is.na(tedtalks$fascinating),0)
+
+#unconvincing
+tedtalks$unconvincing <- sapply(tedtalks$rating_list, find_rating_count, rat_tag = "Unconvincing")
+tedtalks$unconvincing <- replace(tedtalks$unconvincing,is.na(tedtalks$unconvincing),"0")
+tedtalks$unconvincing <- as.numeric(tedtalks$unconvincing)
+tedtalks$unconvincing <- replace(tedtalks$unconvincing,is.na(tedtalks$unconvincing),0)
+
+#courageous
+tedtalks$courageous <- sapply(tedtalks$rating_list, find_rating_count, rat_tag = "Courageous")
+tedtalks$courageous <- replace(tedtalks$courageous,is.na(tedtalks$courageous),"0")
+tedtalks$courageous <- as.numeric(tedtalks$courageous)
+tedtalks$courageous <- replace(tedtalks$courageous,is.na(tedtalks$courageous),0)
+
+#ok
+#tedtalks$ok <- sapply(tedtalks$rating_list, find_rating_count, rat_tag = "OK")
+#tedtalks$ok <- replace(tedtalks$ok,is.na(tedtalks$ok),"0")
+#tedtalks$ok <- as.numeric(tedtalks$ok)
+#tedtalks$ok <- replace(tedtalks$ok,is.na(tedtalks$ok),0)
+
+#netural
+#tedtalks$netural <- sapply(tedtalks$rating_list, find_rating_count, rat_tag = "OK")
+#tedtalks$neutral <- replace(tedtalks$neutral,is.na(tedtalks$neutral),"0")
+#tedtalks$neutral <- as.numeric(tedtalks$neutral)
+#tedtalks$neutral <- replace(tedtalks$neutral,is.na(tedtalks$neutral),0)
+
+#persuasive
+tedtalks$persuasive <- sapply(tedtalks$rating_list, find_rating_count, rat_tag = "OK")
+tedtalks$persuasive <- replace(tedtalks$persuasive,is.na(tedtalks$persuasive),"0")
+tedtalks$persuasive <- as.numeric(tedtalks$persuasive)
+tedtalks$persuasive <- replace(tedtalks$persuasive,is.na(tedtalks$persuasive),0)
+
+#inspiring
+tedtalks$inspiring <- sapply(tedtalks$rating_list, find_rating_count, rat_tag = "OK")
+tedtalks$inspiring <- replace(tedtalks$inspiring,is.na(tedtalks$inspiring),"0")
+tedtalks$inspiring <- as.numeric(tedtalks$inspiring)
+tedtalks$inspiring <- replace(tedtalks$inspiring,is.na(tedtalks$inspiring),0)
+
+#longwinded
+tedtalks$longwinded <- sapply(tedtalks$rating_list, find_rating_count, rat_tag = "OK")
+tedtalks$longwinded <- replace(tedtalks$longwinded,is.na(tedtalks$longwinded),"0")
+tedtalks$longwinded <- as.numeric(tedtalks$longwinded)
+tedtalks$longwinded <- replace(tedtalks$longwinded,is.na(tedtalks$longwinded),0)
+
+#Remove ratings and ratings_list (36 variables now)
+tedtalks <- tedtalks %>% dplyr::select(-c(rating_list, ratings))
+
+
+#7) Rating sentiment group columns (add two sentiment rating columns, 43 variables now)
+
+#SENTIMENT groups
+#will create two columns to have the sum of negative and positive ratings based on vectors created below
+
+#OK and "neutral" ratings were ommitted since do not tell much about positive or negative. they are just neutral
+
+#positive count column
+tedtalks <- tedtalks %>% mutate(positivecount=rowSums(select_(., "informative","inspiring","fascinating","ingenius","beautiful","persuasive","jawdropping","courageous","funny")))
+
+#negative count column
+tedtalks <- tedtalks %>% mutate(negativecount=rowSums(select_(.,"unconvincing","confusing","obnoxious","longwinded")))
+
+
+#colnames(tedtalks)
+
+
+#hist(tedtalks$positivecount)
+
+#hist(tedtalks$negativecount)
+
+
+#8) speaker occupation column (creates occupation dataframe called df2 and occupation_by_rank df) 43 variables still
+
+#replacing all the ;,/ to blanks
+tedtalks$speaker_occupation <- tedtalks$speaker_occupation %>% str_replace_all('/',' ') %>% str_replace_all(',',' ')   %>% str_replace_all(';',' ') %>% str_replace_all('\\+',' ') %>% tolower()
+
+#Unnesting each occupation
+df2 <- unnest_tokens(tedtalks,occupation1,speaker_occupation) %>% dplyr::select(id,occupation1)
+
+#stop word list to be removed
+stop_words <-  c('and','of','in','expert','social','the','for', 'on', 'co')
+
+#removing stop words and renaming similar words 
+df2 <- df2 %>% subset(!occupation1 %in% stop_words) %>% mutate(occupation1 = str_replace_all(occupation1, 
+       c("writer" = "author","scientists" = "scientist","researcher" = "scientist","neuroscientist" = "scientist", "professor" = "educator", "scholar" = "educator", "education" = "educator", "teacher" = "educator", "songauthor" = "author","editor" = "author","data" = "data related","analyst" = "data related","statistician" = "data related", "musician" = "artist","singer" = "artist","sing" = "artist","poet" = "artist","actor" = "artist", "comedian" = "artist","playwright" = "artist","media" = "artist","performance" = "artist","guitarist" = "artist", "dancer" = " artist","humorist" = "artist","pianist" = "artist", "violinist" = "artist","magician" = "artist","artists" = "artist","band" = "artist", "director" = "filmmaker", "producer" = "filmmaker", "entrepreneur" = "business","ceo" = "business", "founder" = "business", "psychology" = "psychologist", "physician" = "health", "medical" = "health", "doctor" = "health", "design" = "designer", "designerer" = "designer", "reporter" = "journalist"))) 
+
+#occupations by rank
+occupation_by_rank <- df2 %>% group_by(occupation1) %>% summarise(n = n_distinct(id)) %>% arrange(desc(n))
+
+#ggplot for speaker occupations
+#geom_bar()
+
+
+#9) tags column (adds num_tags column), 44 variables now
+
+#stringr library
+tedtalks$num_tags <- str_count(tedtalks$tags, ",") +1 #counting how many tags by counting the number of commas and adding one
+# quick histogram of the number of tags
+#qplot(x=num_tags,data=tedtalks)
+
+
+
+
+#10) tags column (unnest tags), 44 variables still
+
+#unnesting individual tags from the field
+tedtalks$tags <- tedtalks$tags %>% str_replace_all('\\[','') %>% str_replace_all('\\]','')   %>% str_replace_all("\\'",' ') %>% str_replace_all(',',' ') %>% tolower()
+
+talk_tags <- unnest_tokens(tedtalks,tags1,tags) %>% dplyr::select(id,tags1)
+#?unnest_tokens()
+
+#figure out unique tags
+#unique(talk_tags$tags1) #441 tags
+
+
+
+
+#create html widget 
+#datatable(head(talk_tags,10))
+
+#11) tags sentiment column (45 variables now, "tagscore" sentiment column added which tells sentiment score for all tags for each talk, tagscore df also created which shows each tag and its sentiment score)
+
+#create object
+tagscore <- talk_tags %>%
+  group_by(id, tags1) %>%
+  tally() %>%
+  inner_join(get_sentiments("afinn"), by = c("tags1"="word")) %>%
+  group_by(id) %>%
+  dplyr::summarize(score = sum(score * n) / sum(n)) 
+
+
+tedtalks <- tedtalks %>% left_join(tagscore)
+
+tedtalks <- tedtalks %>% rename(tagscore=score)
+
+#12) popularity column (for ML predictions, 46 variables)
+#popularity column will assign 1 or 0 to each talk based on if it is in the top 25% of all views
+tedtalks <- tedtalks %>% mutate(popularity=if_else(views>quantile(views, .75), 1, 0))
+tedtalks$popularity <- as.factor(tedtalks$popularity)
+#popularity distribution
+sum(tedtalks$popularity=="1") #617
+sum(tedtalks$popularity=="0") #1850
+
+#13) highrated column (for ML predictions, 47 variables now)
+#highrated column will assign a 1 or 0 to each talk based on if its positivecount of ratings is larger than its negativecount of ratings
+#tedtalks <- tedtalks %>% mutate(highrated=if_else(positivecount>negativecount, 1,0)), this line is scrapped since too many 1s being assigned: #sum(tedtalks$highrated=="1") #2462
+#sum(tedtalks$highrated=="0") #5
+
+#NEW high rated column:
+##highrated column will assign a 1 or 0 to each talk based on if its positivecount of ratings is larger than the top 25% of positivecount
+tedtalks <- tedtalks %>% mutate(highrated=if_else(positivecount>quantile(positivecount, .75), 1,0))
+tedtalks$highrated <- as.factor(tedtalks$highrated)
+
+#new highrated distribution
+sum(tedtalks$highrated=="1") #616
+sum(tedtalks$highrated=="0") #1851
+
+#check distributions:
+#qqnorm(tedtalkshigh$positivecount);qqline(tedtalkshigh$positivecount, col = 2)
+
+#qqplot(tedtalkshigh$highrated)
+
+#ggdensity(tedtalkshigh$positivecount)
+
+
+
+
+#14) Reordering dataset (will reorder final dataframe to include only columns that are needed, 43 variables now)
+
+colnames(tedtalks)
+
+#keep only relevant columns (num_speaker, relatedtalks, name removed)
+tedtalks <- tedtalks %>% dplyr::select(id, title, main_speaker, speaker_occupation, views, comments, duration, languages, description, transcript, event, published_date, month, year, day, film_date, filming_month, filming_year, tags, num_tags, tagscore, funny, beautiful, confusing, jawdropping, informative, ingenius, obnoxious, fascinating, unconvincing, courageous, persuasive, inspiring, longwinded, positivecount, negativecount, sentiment, TransHasVideo, TransHasApplause, TransHasMusic, TransHasLaughter, highrated, popularity)
+
+colnames(tedtalks)
+
+#tedtalks is the main master dataset
+```
+
+After this runs, there should be 5 dataframes in global environment:
+df2 (4679 obs, 2 variables)
+occupation_by_rank (1063 obs, 2 variables)
+tagscore (1144 obs, 2 variables)
+talk_tags (21586 obs, 2 variables)
+tedtalks (2467 obs, 43 variables)
+
+
+15) normalization formula
+```{r}
+
+#add NA.rm=TRUE so NAs handlded in Tagscore column
+Min_Max_function <- function(x){
+  return(  (x - min(x, na.rm=TRUE)) /(max(x, na.rm=TRUE) - min(x, na.rm=TRUE))   )
+}
+
+
+#Norm_Iris <- as.data.frame(lapply(NewIris[,c(1,2,3,4)], Min_Max_function))
+
+#dplyr select_if(), double means data type that can have decimal, like numeric in base R)
+tednumeric <- tedtalks %>% select_if(is.numeric) %>% dplyr::select(-c(id, month, year, filming_month, filming_year))
+
+Norm_TED <- as.data.frame(lapply(tednumeric, Min_Max_function))
+
+#add back in popularity and highrated columns
+Norm_TED <- Norm_TED %>% mutate(popularity=tedtalks$popularity, highrated=tedtalks$highrated)
+```
+
+
+##Training and test sets
+
+16) Training and test set #1 (full original dataset used, tedtalks) 43 variables
+```{r}
+#first training set is without changing any data types
+#create train and test sets
+#75%  split
+split <- sample(nrow(tedtalks), nrow(tedtalks) * 3/4)
+train <- tedtalks[split,]
+test <- tedtalks[-split,]
+
+#str(train)
+#str(test)
+
+#str(tedtalks)
+```
+
+17) Training and test #2 (modified dataset used, tedtalks2) 36 variables
+```{r}
+#create second pair of train and test sets
+
+#second training set is with modified dataset by removing categories with too many levels for analysis
+
+#remove problematic columns (31 columns now)
+tedtalks2 <- tedtalks %>% dplyr::select(-main_speaker, -tagscore, -tags, -title, -transcript, -speaker_occupation, -event, -description)
+
+
+#str(tedtalks2)
+
+#factor
+tedtalks2$day <- as.factor(tedtalks2$day)
+
+
+#75%  split
+split2 <- sample(nrow(tedtalks2), nrow(tedtalks2) * 3/4)
+train2 <- tedtalks2[split,]
+test2 <- tedtalks2[-split,]
+
+#str(train2)
+#str(test2)
+
+```
+
+18) Train and test subgroups (uses Norm_TED dataset) for popularity
+```{r}
+
+Norm_TED <- Norm_TED %>% dplyr::select(-tagscore)
+
+#normalized train and test
+split3 <- sample(nrow(Norm_TED), nrow(Norm_TED) * 3/4)
+train3 <- Norm_TED[split3,]
+test3 <- Norm_TED[-split3,]
+
+#create test and train labels and  without for popularity prediction
+colnames(train3)
+test3_numonly <- test3 %>% dplyr::select(-popularity)
+test3_labels <- test3 %>% dplyr::select(popularity)
+train3_numonly <- train3 %>% dplyr::select(-popularity)
+train3_labels <- train3 %>% dplyr::select(popularity)
+  
+#IrisTestSet_numonly <- IrisTestSet[,-5]
+#IrisTestSet_labels <- IrisTestSet[,5]
+#IrisTrainSet_numonly <- IrisTrainSet[,-5]
+#IrisTrainSet_labels <- IrisTrainSet[,5]
+```
+
+19) Train and test subgroups (uses Norm_TED dataset) for highrated
+```{r}
+#Make sure tagscore removed, wont be needed up run previous popularity subgroup
+#Norm_TED <- Norm_TED %>% dplyr::select(-tagscore)
+
+
+#normalized train and test for highrated
+split4 <- sample(nrow(Norm_TED), nrow(Norm_TED) * 3/4)
+train4 <- Norm_TED[split4,]
+test4 <- Norm_TED[-split4,]
+
+#create test and train labels and  without for highrated prediction
+colnames(train4)
+test4_numonly <- test4 %>% dplyr::select(-highrated)
+test4_labels <- test4 %>% dplyr::select(highrated)
+train4_numonly <- train4 %>% dplyr::select(-highrated)
+train4_labels <- train4 %>% dplyr::select(highrated)
+  
+#IrisTestSet_numonly <- IrisTestSet[,-5]
+#IrisTestSet_labels <- IrisTestSet[,5]
+#IrisTrainSet_numonly <- IrisTrainSet[,-5]
+#IrisTrainSet_labels <- IrisTrainSet[,5]
+```
+
+
+20) Creating popular and high-rated sub data frames
+```{r}
+#popular only dataframe
+tedtalkspop <- tedtalks %>% filter(popularity ==1) 
+
+#highrated only datafarme
+tedtalkshr <- tedtalks %>% filter(highrated ==1) 
+
+#high-rated AND popular talks
+tedtalkselite <- tedtalks %>% filter(highrated ==1, popularity==1) 
+```
+
+
+21) read this to get idea of what important dataframes do:
+#Data to work from:
+Tedtalks=original dataset (colnames(tedtalks))
+Tedtalks2= dataset without giant factor level columns (colnames(tedtalks2))
+Norm_TED= normalized dataset for all numeric values (colnames(Norm_TED))
+tedtalkspop= only the popular ted talks
+tedtalkshr= only the high-rated ted talks
+tedtalkselite= talks that are BOTH classified as high-rated and popular
+
+#Train and test sets:
+Train and test= train and test for tedtalks
+Train2 and test2= train and test for tedtalks 2
+Train3 and test 3= train and test for Norm_TED with focus on popularity variable
+Train 4 and test 4=train and test for Norm_TED with focus on highrated variable
+
+#small dataframes:
+occupations_by_rank=all top occupations from TED Talks
+talk_tags= tags associated with each unique talk ID
+tagscore=overall cumulative sentiment score for tags for each talk ID
+ted_ratings_df=all ratings for each ID
+
+
+
+
+#Machine Learning
+
+
+relationship between variables for popularity
+```{r}
+#create new dataframe to analyze with only relevant attributes in relation to popularity
+tedtalksatts <- tedtalks2 %>% dplyr::select(popularity, views, comments, duration, languages, num_tags)
+colnames(tedtalksatts)
+ggpairs(data=tedtalksatts, columns=c(1:6), title="tedtalks: popularity and other attributes")
+```
+
+relationship between variables for highrated
+```{r}
+#create new dataframe to analyze with only relevant attributes in relation to popularity
+tedtalksatts <- tedtalks2 %>% dplyr::select(highrated, views, comments, duration, languages, num_tags)
+colnames(tedtalksatts)
+ggpairs(data=tedtalksatts, columns=c(1:6), title="tedtalks: highrated and other attributes")
+```
+
+#SVM
+
+First tune with SVM to find best C and Kernel
+
+SVM best C for linear
+C=100
+Support vectors=55
+```{r}
+tune.out <- tune(svm, popularity~., data = train3, kernel = "linear",
+                 ranges = list(cost = c(0.001, 0.01, 0.1, 1, 5, 10, 100)))
+# extract the best model
+(bestmod <- tune.out$best.model)
+
+```
+
+SVM best C for radial
+C=100
+Support vectors:240
+```{r}
+tune.out <- tune(svm, popularity~., data = train3, kernel = "radial",
+                 ranges = list(cost = c(0.001, 0.01, 0.1, 1, 5, 10, 100)))
+# extract the best model
+(bestmod <- tune.out$best.model)
+
+
+```
+
+SVM best C for polynomial
+C=100
+support vectors=407
+```{r}
+tune.out <- tune(svm, popularity~., data = train3, kernel = "polynomial",
+                 ranges = list(cost = c(0.001, 0.01, 0.1, 1, 5, 10, 100)))
+# extract the best model
+(bestmod <- tune.out$best.model)
+
+```
+
+comparing features in svm (non normalized): popularity
+```{r}
+cat('Regression tree case (popularity, non-normalized dataset):\n')
+fit1 <- rpart(popularity ~ ., data=train2)
+print(fit1$variable.importance)
+cat('\n')
+cat('SVM model case (popularity, non-normalized dataset):\n')
+fit2 <- svm(popularity ~ ., data = train2)
+w <- t(fit2$coefs) %*% fit2$SV                 # weight vectors
+w <- apply(w, 2, function(v){sqrt(sum(v^2))})  # weight
+w <- sort(w, decreasing = T)
+print(w)
+```
+
+comparing features in svm (normalized): popularity
+```{r}
+cat('Regression tree case (popularity, normalized dataset):\n')
+fit1 <- rpart(popularity ~ ., data=train3)
+print(fit1$variable.importance)
+cat('\n')
+cat('SVM model case (popularity, normalized dataset):\n')
+fit2 <- svm(popularity ~ ., data = train3)
+w <- t(fit2$coefs) %*% fit2$SV                 # weight vectors
+w <- apply(w, 2, function(v){sqrt(sum(v^2))})  # weight
+w <- sort(w, decreasing = T)
+print(w)
+
+#views, positivecount, fascinating, informative, ingenius, persuasive
+
+```
+
+
+SVM Model 1: SVM model for predicting Popularity: 96.43%
+```{r}
+cat('SVM model for predicting Popularity: 96.43%:\n')
+#CREATE MODEL
+## linear kernel, using normalized train set
+SVM_fit_L <- svm(popularity~., data=train3, 
+                 kernel="linear", cost=100, 
+                 scale=FALSE)
+print(SVM_fit_L) #277 support vectors
+##MAKE PREDICTION
+(PredPopularity <- predict(SVM_fit_L, test3, type="class"))
+## Confusion Matrix
+(Ptable <- table(PredPopularity, test3_labels$popularity))
+## Misclassification Rate 
+MR_P <- 1 - sum(diag(Ptable))/sum(Ptable) 
+1-MR_P #linear is 96.43%
+
+#polynomial is 89.30%
+#radial is 92.06%
+
+#predictor variables
+colnames(train3_numonly)
+```
+
+SVM Model 2: SVM model for predicting Popularity (non-normalized): 65.64%
+```{r}
+cat('SVM model for predicting Popularity:65.64%:\n')
+#CREATE MODEL
+## linear kernel, using normalized train set
+SVM_fit_L <- svm(popularity~., data=train2, 
+                 kernel="linear", cost=100, 
+                 scale=FALSE)
+print(SVM_fit_L) #2 support vectors
+##MAKE PREDICTION
+(PredPopularity <- predict(SVM_fit_L, test2, type="class"))
+## Confusion Matrix
+(Ptable <- table(PredPopularity, test3_labels$popularity))
+## Misclassification Rate 
+MR_P <- 1 - sum(diag(Ptable))/sum(Ptable) 
+1-MR_P #linear is 65.64%
+
+#polynomial is 65.64%
+#radial is 74.88%
+
+#predictor variables
+colnames(train2)
+```
+
+SVM Model 3: SVM model for predicting High-rated: 97.41%
+```{r}
+cat('SVM model for predicting High-rated: 97.41%:\n')
+#CREATE MODEL
+## linear kernel, using normalized train set
+SVM_fit_L_HR <- svm(highrated~., data=train4, 
+                 kernel="linear", cost=100, 
+                 scale=FALSE)
+print(SVM_fit_L_HR) #164 support vectors
+##MAKE PREDICTION
+(PredHighRated <- predict(SVM_fit_L_HR, test4, type="class"))
+## Confusion Matrix
+(Ptable <- table(PredHighRated, test4_labels$highrated))
+## Misclassification Rate 
+MR_P <- 1 - sum(diag(Ptable))/sum(Ptable) 
+1-MR_P #linear is 97.41%
+
+#polynomial is 86.87%
+#radial is 95.30%
+
+#predictor variables
+colnames(train4_numonly)
+```
+
+SVM Model 4: SVM model for predicting High-rated (non-normalized): 
+```{r}
+cat('SVM model for predicting High-rated: 98.05% (non-normalized dataset):\n')
+#CREATE MODEL
+## linear kernel, using normalized train set
+SVM_fit_L_HR <- svm(highrated~., data=train2, 
+                 kernel="linear", cost=100, 
+                 scale=FALSE)
+print(SVM_fit_L_HR) #164 support vectors
+##MAKE PREDICTION
+(PredHighRated <- predict(SVM_fit_L_HR, test2, type="class"))
+## Confusion Matrix
+(Ptable <- table(PredHighRated, test2$highrated))
+## Misclassification Rate 
+MR_P <- 1 - sum(diag(Ptable))/sum(Ptable) 
+1-MR_P #linear is 97.41%
+
+#polynomial is 33.06%
+#radial is 75.52%
+
+#predictor variables 
+colnames(train2)
+```
+
+Now look at some of relationships between variables with SVM plots:
+
+
+Visualizing the train set for popularity - linear (views and comments)
+```{r}
+train4 <- train3 %>% dplyr::select(views, comments, popularity)
+
+# Fitting SVM to the Training set 
+install.packages('e1071') 
+library(e1071) 
+  
+classifier = svm(formula = popularity ~ ., 
+                 data = train4, 
+                 type = 'C-classification', 
+                 kernel = 'linear') 
+
+# installing library ElemStatLearn 
+library(ElemStatLearn) 
+  
+# Plotting the training data set results 
+set = train4
+X1 = seq(min(set[, 1]) - 1, max(set[, 1]) + 1, by = 0.01) 
+X2 = seq(min(set[, 2]) - 1, max(set[, 2]) + 1, by = 0.01) 
+
+
+grid_set = expand.grid(X1, X2) 
+colnames(grid_set) = c('views', 'comments') 
+y_grid = predict(classifier, newdata = grid_set) 
+
+
+#plot
+plot(set[, -3], 
+     main = 'SVM (Training set)', 
+     xlab = 'views', ylab = 'comments', 
+     xlim = c(-0.2,0.5), ylim = c(-0.25, 0.5))
+  
+contour(X1, X2, matrix(as.numeric(y_grid), length(X1), length(X2)), add = TRUE) 
+  
+points(grid_set, pch = '.', col = ifelse(y_grid == 1, 'coral1', 'aquamarine')) 
+  
+points(set, pch = 21, bg = ifelse(set[, 3] == 1, 'green4', 'red3')) 
+
+
+#zoomed in, can't have negative comments or views, thats why that part of plot is empty.
+#the more views doesnt mean more comments
+#a lot more views on left than right of red side (popularity), views for some videos among popular talks there is higher class of ultra popular talks
+```
+
+
+log
+```{r}
+variable <- c(1,2,3,10,50,100,500,1000,10000,1000000)
+log(variable)
+```
+
+Visualizing the train set - linear (views and positivecount)
+```{r}
+train4 <- train3 %>% dplyr::select(views, positivecount, popularity)
+
+# Fitting SVM to the Training set 
+install.packages('e1071') 
+library(e1071) 
+  
+classifier = svm(formula = popularity ~ ., 
+                 data = train4, 
+                 type = 'C-classification', 
+                 kernel = 'linear') 
+
+# installing library ElemStatLearn 
+library(ElemStatLearn) 
+  
+# Plotting the training data set results 
+set = train4
+X1 = seq(min(set[, 1]) - 1, max(set[, 1]) + 1, by = 0.01) 
+X2 = seq(min(set[, 2]) - 1, max(set[, 2]) + 1, by = 0.01) 
+
+
+grid_set = expand.grid(X1, X2) 
+colnames(grid_set) = c('views', 'positivecount') 
+y_grid = predict(classifier, newdata = grid_set) 
+
+  
+plot(set[, -3], 
+     main = 'SVM (Training set)', 
+     xlab = 'views', ylab = 'positivecount', 
+     xlim = range(X1), ylim = range(X2)) 
+  
+contour(X1, X2, matrix(as.numeric(y_grid), length(X1), length(X2)), add = TRUE) 
+  
+points(grid_set, pch = '.', col = ifelse(y_grid == 1, 'coral1', 'aquamarine')) 
+  
+points(set, pch = 21, bg = ifelse(set[, 3] == 1, 'green4', 'red3')) 
+```
+
+Visualizing the train set - linear (views and comments)
+```{r}
+train4 <- train3 %>% dplyr::select(views, comments, popularity)
+library(e1071)
+classifierR = svm(formula = popularity ~ .,
+                 data = train4,
+                 type = 'C-classification', # this is because we want to make a regression classification
+                 kernel = 'linear')
+
+library(ElemStatLearn)
+# declare set as the training set
+set = train4
+# this section creates the background region red/green. It does that by the 'by' which you can think of as the steps in python, so each 0.01 is interpreted as 0 or 1 and is either green or red. The -1 and +1 give us the space around the edges so the dots are not jammed
+X1 = seq(min(set[, 1]) - 1, max(set[, 1]) + 1, by = 0.01)
+X2 = seq(min(set[, 2]) - 1, max(set[, 2]) + 1, by = 0.01)
+grid_set = expand.grid(X1, X2)
+# just giving a name to the X and Y 
+colnames(grid_set) = c('views', 'comments')
+# this is the MAGIC of the background coloring
+# here we use the classifier to predict the result of each of each of the pixel bits noted above
+y_gridR = predict(classifierR, newdata = grid_set)
+# that's the end of the background
+# now we plat the actual data 
+plot(set[, -3],
+     main = 'SVM Linear Kernel (Training set)',
+     xlab = 'views', ylab = 'comments',
+     xlim = range(X1), ylim = range(X2)) # this bit creates the limits to the values plotted this is also a part of the MAGIC as it creates the line between green and red
+contour(X1, X2, matrix(as.numeric(y_gridR), length(X1), length(X2)), add = TRUE)
+# here we run through all the y_pred data and use ifelse to color the dots
+# note the dots are the real data, the background is the pixel by pixel determination of y/n
+# graph the dots on top of the background give you the image
+points(grid_set, pch = '.', col = ifelse(y_gridR == 1, 'springgreen3', 'tomato'))
+points(set, pch = 21, bg = ifelse(set[, 3] == 1, 'green4', 'red3'))
+```
+
+SVM Plot (views and positive count)
+```{r}
+train4 <- train3 %>% dplyr::select(views, positivecount, popularity)
+# Fit Support Vector Machine model to data set
+svmfit <- svm(y~., data = dat, kernel = "linear", scale = FALSE)
+# Plot Results
+plot(svmfit, dat)
+
+svmfit <- svm(popularity~., data=train4, kernel= "linear", scale=FALSE)
+plot(svmfit, train4)
+```
+
+SVM Plot popularity (ingenius and persuasive))
+```{r}
+train4 <- train3 %>% dplyr::select(ingenius, persuasive, popularity)
+# Fit Support Vector Machine model to data set
+#svmfit <- svm(y~., data = dat, kernel = "linear", scale = FALSE)
+# Plot Results
+#plot(svmfit, dat)
+
+svmfit <- svm(popularity~., data=train4, kernel= "polynomial", scale=FALSE)
+plot(svmfit, train4)
+
+#the Xs are the points used for support vectors
+#Os are points that not used for support vectors
+#black vs red is the original classification,Red Xs and Red Os mean popularity, black Xs and Os mean not popular
+#a lot of popular Red on popular side
+
+```
+
+SVM Plot (positivecount and num_tags) ****
+```{r}
+train4 <- train3 %>% dplyr::select(positivecount, num_tags, popularity)
+# Fit Support Vector Machine model to data set
+svmfit <- svm(y~., data = dat, kernel = "linear", scale = FALSE)
+# Plot Results
+plot(svmfit, dat)
+
+svmfit <- svm(popularity~., data=train4, kernel= "linear", scale=FALSE)
+plot(svmfit, train4)
+```
+
+SVM Plot (language and views)) **** polynomial vs linear
+```{r}
+train4 <- train3 %>% dplyr::select(views, languages, popularity)
+test4 <- test3 %>% dplyr::select(views, languages, popularity)
+# Fit Support Vector Machine model to data set
+svmfit <- svm(y~., data = dat, kernel = "linear", scale = FALSE)
+# Plot Results
+plot(svmfit, dat)
+
+#polynomial
+svmfit <- svm(popularity~., data=train4, kernel= "polynomial", scale=FALSE)
+plot(svmfit, train4)
+#prediction
+pred_R <- predict(svmfit, test4, type="class")
+R_table<-table(pred_R, test4$popularity)
+MR_R <- 1 - sum(diag(R_table))/sum(R_table)#76%
+
+#linear
+svmfit <- svm(popularity~., data=train4, kernel= "linear", scale=FALSE)
+plot(svmfit, train4)
+
+#views and languages 
+#
+
+```
+
+SVM Plot (language and views)) **** polynomial vs linear
+```{r}
+train4 <- train3 %>% dplyr::select(views, languages, popularity)
+test4 <- test3 %>% dplyr::select(views, languages, popularity)
+# Fit Support Vector Machine model to data set
+svmfit <- svm(y~., data = dat, kernel = "linear", scale = FALSE)
+# Plot Results
+plot(svmfit, dat)
+
+#polynomial
+svmfit <- svm(popularity~., data=train4, kernel= "polynomial", scale=FALSE)
+plot(svmfit, train4)
+#prediction
+pred_R <- predict(svmfit, test4, type="class")
+R_table<-table(pred_R, test4$popularity)
+MR_R <- 1 - sum(diag(R_table))/sum(R_table)#0.245
+
+#linear
+svmfit <- svm(popularity~., data=train4, kernel= "linear", scale=FALSE)
+plot(svmfit, train4)
+```
+
+
+SVM Plot (sentiment and positivecount for highrated)) **** polynomial vs linear TEMPLATE
+```{r}
+train4 <- train3 %>% dplyr::select(sentiment, positivecount, highrated)
+test4 <- test3 %>% dplyr::select(sentiment, positivecount, highrated)
+# Fit Support Vector Machine model to data set
+#svmfit <- svm(y~., data = dat, kernel = "linear", scale = FALSE)
+# Plot Results
+#plot(svmfit, dat)
+
+#polynomial
+svmfit <- svm(popularity~., data=train4, kernel= "polynomial", scale=FALSE)
+plot(svmfit, train4)
+#prediction
+pred_R <- predict(svmfit, test4, type="class")
+R_table<-table(pred_R, test4$popularity)
+MR_R <- 1 - sum(diag(R_table))/sum(R_table)#0.245
+
+#linear
+svmfit <- svm(highrated~., data=train4, kernel= "linear", scale=FALSE)
+plot(svmfit, train4)
+Kern plot
+```{r}
+# fit model and produce plot
+kernfit <- ksvm(x, y, type = "C-svc", kernel = 'vanilladot')
+plot(kernfit, data = x)
+```
+
+#SVM: Highrated
+
+
+SVM Model 4: comparing features in svm (non normalized): highrated
+```{r}
+cat('Regression tree case (highrated, non-normalized dataset):\n')
+fit1 <- rpart(highrated ~ ., data=train2)
+print(fit1$variable.importance)
+cat('\n')
+cat('SVM model case (highrated, non-normalized dataset):\n')
+fit2 <- svm(highrated ~ ., data = train2)
+w <- t(fit2$coefs) %*% fit2$SV                 # weight vectors
+w <- apply(w, 2, function(v){sqrt(sum(v^2))})  # weight
+w <- sort(w, decreasing = T)
+print(w)
+```
+
+comparing features in svm (normalized): highrated
+```{r}
+cat('Regression tree case (highrated, normalized dataset):\n')
+fit1 <- rpart(highrated ~ ., data=train3)
+print(fit1$variable.importance)
+cat('\n')
+cat('SVM model case (highrated, normalized dataset):\n')
+fit2 <- svm(highrated ~ ., data = train3)
+w <- t(fit2$coefs) %*% fit2$SV                 # weight vectors
+w <- apply(w, 2, function(v){sqrt(sum(v^2))})  # weight
+w <- sort(w, decreasing = T)
+print(w)
+
+#views, positivecount, fascinating, informative, ingenius, persuasive
+
+```
+
+SVM best C for linear (highrated)
+C=0.01
+Support vectors=10
+SVM type: C-classification
+```{r}
+tune.out <- tune(svm, highrated~., data = train3, kernel = "linear",
+                 ranges = list(cost = c(0.001, 0.01, 0.1, 1, 5, 10, 100)))
+# extract the best model
+(bestmod <- tune.out$best.model)
+
+```
+
+SVM best C for radial (highrated)
+C=0.001
+Support vectors:12
+SVM-type: C-classification
+```{r}
+tune.out <- tune(svm, highrated~., data = train3, kernel = "radial",
+                 ranges = list(cost = c(0.001, 0.01, 0.1, 1, 5, 10, 100)))
+# extract the best model
+(bestmod <- tune.out$best.model)
+
+
+```
+
+SVM best C for polynomial (highrated)
+C=1
+support vectors=15
+SVM-type: C-classification
+```{r}
+tune.out <- tune(svm, highrated~., data = train3, kernel = "polynomial",
+                 ranges = list(cost = c(0.001, 0.01, 0.1, 1, 5, 10, 100)))
+# extract the best model
+(bestmod <- tune.out$best.model)
+
+```
+
+
+
+
+
+#NAIVE BAYES
+
+NB Model 1: NB popularity model (not normalized): 88.33%
+```{r}
+#popularity
+cat('NB popularity model (non-normalized dataset):\n')
+train$popularity <- as.factor(train$popularity)
+test$popularity <- as.factor(test$popularity)
+NBclassifier=naiveBayes(popularity~., data=train)
+PredPopularity <- predict(NBclassifier, newdata = test, type = "class",trcontrol = trainControl(method = "cv", number = 10))
+print(confusionMatrix(table(PredPopularity, test$popularity)))
+#90% accuracy
+
+#popularity raw
+#train$popularity <- as.factor(train$popularity)
+#test$popularity <- as.factor(test$popularity)
+#NBclassifier=naiveBayes(popularity~., data=train)
+#predict_nb <- predict(NBclassifier, newdata = test, type = "class",trcontrol = trainControl(method = "cv", number = 10, "raw"))
+#confusionMatrix(table(predict_nb, test$popularity)) 
+#90% accuracy
+
+#predictor variables
+colnames(train)
+```
+
+NB Model 2: NB popularity model (normalized): 90.11%
+```{r}
+#popularity
+cat('NB popularity model (normalized dataset):\n')
+train3$popularity <- as.factor(train3$popularity)
+test3$popularity <- as.factor(test3$popularity)
+NBclassifier=naiveBayes(popularity~., data=train3)
+PredPopularity <- predict(NBclassifier, newdata = test3, type = "class",trcontrol = trainControl(method = "cv", number = 10))
+print(confusionMatrix(table(PredPopularity, test3$popularity)))
+#90% accuracy
+
+#popularity raw
+#train$popularity <- as.factor(train$popularity)
+#test$popularity <- as.factor(test$popularity)
+#NBclassifier=naiveBayes(popularity~., data=train)
+#predict_nb <- predict(NBclassifier, newdata = test, type = "class",trcontrol = trainControl(method = "cv", number = 10, "raw"))
+#confusionMatrix(table(predict_nb, test$popularity)) 
+#90% accuracy
+colnames(train3_numonly)
+```
+
+NB Model 3: NB high rated model (not normalized): 94%
+```{r}
+#high-rated
+cat('NB high-rated model (non-normalized dataset):\n')
+train$highrated <- as.factor(train$highrated)
+test$highrated <- as.factor(test$highrated)
+NBclassifier=naiveBayes(highrated~., data=train)
+PredHighRated <- predict(NBclassifier, newdata = test, type = "class",trcontrol = trainControl(method = "cv", number = 10))
+print(confusionMatrix(table(PredHighRated, test$highrated)))
+
+#u <- union(predict_nb, test$highrated)
+#t <- table(factor(predict_nb, u), factor(test$highrated, u))
+#confusionMatrix(t)
+#99.19%
+
+```
+
+
+NB Model 4: NB high rated model (normalized): 93.52%
+```{r}
+#high-rated
+cat('NB high-rated model (normalized dataset):\n')
+train4$highrated <- as.factor(train4$highrated)
+test4$highrated <- as.factor(test4$highrated)
+NBclassifier=naiveBayes(highrated~., data=train4)
+PredHighRated <- predict(NBclassifier, newdata = test4, type = "class",trcontrol = trainControl(method = "cv", number = 10))
+print(confusionMatrix(table(PredHighRated, test4_labels$highrated)))
+
+#u <- union(predict_nb, test$highrated)
+#t <- table(factor(predict_nb, u), factor(test$highrated, u))
+#confusionMatrix(t)
+#99.19%
+
+colnames(train4_numonly)
+```
+
+
+#RANDOM FOREST
+
+RF Model 1: Popularity: Building a Random Forest Model (by finding best parameters first)
+mtry=9
+maxnode=15
+ntree=250
+accuracy=100%
+```{r}
+#syntax for random forest
+#RandomForest(formula, ntree=n, mtry=FALSE, maxnodes = NULL)
+#Arguments:
+#- Formula: Formula of the fitted model
+#- ntree: number of trees in the forest
+#- mtry: Number of candidates draw to feed the algorithm. By default, it is the square of the number of columns.
+#- maxnodes: Set the maximum amount of terminal nodes in the forest
+#- importance=TRUE: Whether independent variables importance in the random forest be assessed
+
+#define the control first
+#train(formula, tedtalks2, method = "rf", metric= "Accuracy", trControl = trainControl(), tuneGrid = NULL)
+#argument
+#- `formula`: Define the formula of the algorithm
+#- `method`: Define which model to train. Note, at the end of the tutorial, there is a list of all the models that can be trained
+#- `metric` = "Accuracy": Define how to select the optimal model
+#- `trControl = trainControl()`: Define the control parameters
+#- `tuneGrid = NULL`: Return a data frame with all the possible combination
+
+#1) Evaluate the model with a grid search of 10 folder
+trControl <- trainControl(method = "cv",
+    number = 10,
+    search = "grid")
+
+#2) Train a random forest model. Best model is chosen with the accuracy measure.
+rf_default <- train(popularity~.,
+    data = train2,
+    method = "rf",
+    metric = "Accuracy",
+    trControl = trControl)
+
+print(rf_default)
+
+#3) search best mtry. ou can test the model with values of mtry from 1 to 10
+set.seed(1234)
+tuneGrid <- expand.grid(.mtry = c(1: 10)) #Construct a vector with value from 3:10
+rf_mtry <- train(popularity~.,
+    data = train2,
+    method = "rf",
+    metric = "Accuracy",
+    tuneGrid = tuneGrid,
+    trControl = trControl,
+    importance = TRUE,
+    nodesize = 14,
+    ntree = 300)
+print(rf_mtry)
+
+#4) best mtry value
+rf_mtry$bestTune$mtry
+#rf_result <- max(rf_mtry$results$Accuracy)
+
+
+#5) store result
+best_mtry <- rf_mtry$bestTune$mtry 
+#mtry=8
+
+#6) find best max nodes
+store_maxnode <- list()
+tuneGrid <- expand.grid(.mtry = best_mtry)
+for (maxnodes in c(5: 15)) {
+    set.seed(1234)
+    rf_maxnode <- train(popularity~.,
+        data = train2,
+        method = "rf",
+        metric = "Accuracy",
+        tuneGrid = tuneGrid,
+        trControl = trControl,
+        importance = TRUE,
+        nodesize = 14,
+        maxnodes = maxnodes,
+        ntree = 300)
+    current_iteration <- toString(maxnodes)
+    store_maxnode[[current_iteration]] <- rf_maxnode
+}
+results_mtry <- resamples(store_maxnode)
+summary(results_mtry)
+
+#store_maxnode <- list(): The results of the model will be stored in this list
+#expand.grid(.mtry=best_mtry): Use the best value of mtry
+#for (maxnodes in c(15:25)) { ... }: Compute the model with values of maxnodes starting from 15 to 25.
+#maxnodes=maxnodes: For each iteration, maxnodes is equal to the current value of maxnodes. i.e 15, 16, 17, ...
+#key <- toString(maxnodes): Store as a string variable the value of maxnode.
+#store_maxnode[[key]] <- rf_maxnode: Save the result of the model in the list.
+#resamples(store_maxnode): Arrange the results of the model
+#summary(results_mtry): Print the summary of all the combination.
+
+#7) search best ntree
+store_maxtrees <- list()
+for (ntree in c(250, 300, 350, 400, 450, 500, 550, 600, 800, 1000, 2000)) {
+    set.seed(5678)
+    rf_maxtrees <- train(popularity~.,
+        data = train2,
+        method = "rf",
+        metric = "Accuracy",
+        tuneGrid = tuneGrid,
+        trControl = trControl,
+        importance = TRUE,
+        nodesize = 14,
+        maxnodes = 15,
+        ntree = ntree)
+    key <- toString(ntree)
+    store_maxtrees[[key]] <- rf_maxtrees
+}
+results_tree <- resamples(store_maxtrees)
+summary(results_tree)
+
+#make model with best values now
+fit_rf <- randomForest(popularity~.,
+    data=train2,
+    method = "rf",
+    metric = "Accuracy",
+    tuneGrid = tuneGrid,
+    trControl = trControl,
+    importance = TRUE,
+    nodesize = 14,
+    ntree = 200,
+    maxnodes = 15,
+    scale=FALSE
+    )
+#8) evaluate the model
+prediction <- predict(fit_rf, newdata= test2)
+
+#9) confusion matrix
+confusionMatrix(prediction, test2$popularity)
+
+#predictor variables
+colnames(train2)
+```
+
+RF Model 1: visuals
+```{r}
+#class error
+fit_rf$confusion[, 'class.error'] #00.644
+
+
+#options('digits'=3)
+
+#plot errors vs trees
+plot(fit_rf, main='Error vs Trees')
+
+#histogram of tree size
+#frequency is how often that tree size occurs in that set of trees
+#spiike is smaller, bunch more weight to right hand side, less sloping up and sloping down, more uniform instead of bell shape
+#this goes up to 25, spike when 0-10 freq for normalized version, smooth curve towards right, peaking between 40-70 trees
+hist(treesize(fit.rf))
+     
+#most important variables
+varImpPlot(fit_rf)
+attributes(fit_rf)
+
+#predictor variables
+colnames(train3_numonly)
+
+#meandecreasegini is effectively a measure of how important a variable is for estimating the value of the target variable across all of the trees that make up the forest
+
+#curve is little more steep than normalized version, some things have more weight than others, makes sense since normalized one has things more center, more drawn to 0 and 1
+
+```
+
+RF Model 2: High-rated: Building a Random Forest Model (by finding best parameters first)
+mtry=
+maxnode=
+ntree=
+accuracy=99.70%
+```{r}
+#syntax for random forest
+#RandomForest(formula, ntree=n, mtry=FALSE, maxnodes = NULL)
+#Arguments:
+#- Formula: Formula of the fitted model
+#- ntree: number of trees in the forest
+#- mtry: Number of candidates draw to feed the algorithm. By default, it is the square of the number of columns.
+#- maxnodes: Set the maximum amount of terminal nodes in the forest
+#- importance=TRUE: Whether independent variables importance in the random forest be assessed
+
+#define the control first
+#train(formula, tedtalks2, method = "rf", metric= "Accuracy", trControl = trainControl(), tuneGrid = NULL)
+#argument
+#- `formula`: Define the formula of the algorithm
+#- `method`: Define which model to train. Note, at the end of the tutorial, there is a list of all the models that can be trained
+#- `metric` = "Accuracy": Define how to select the optimal model
+#- `trControl = trainControl()`: Define the control parameters
+#- `tuneGrid = NULL`: Return a data frame with all the possible combination
+
+#1) Evaluate the model with a grid search of 10 folder
+trControl <- trainControl(method = "cv",
+    number = 10,
+    search = "grid")
+
+#2) Train a random forest model. Best model is chosen with the accuracy measure.
+rf_default <- train(highrated~.,
+    data = train2,
+    method = "rf",
+    metric = "Accuracy",
+    trControl = trControl)
+
+print(rf_default)
+
+#3) search best mtry. ou can test the model with values of mtry from 1 to 10
+set.seed(1234)
+tuneGrid <- expand.grid(.mtry = c(1: 10)) #Construct a vector with value from 3:10
+rf_mtry <- train(highrated~.,
+    data = train2,
+    method = "rf",
+    metric = "Accuracy",
+    tuneGrid = tuneGrid,
+    trControl = trControl,
+    importance = TRUE,
+    nodesize = 14,
+    ntree = 300)
+print(rf_mtry)
+
+#4) best mtry value
+rf_mtry$bestTune$mtry
+#rf_result <- max(rf_mtry$results$Accuracy)
+
+
+#5) store result
+best_mtry <- rf_mtry$bestTune$mtry 
+#mtry=8
+
+#6) find best max nodes
+store_maxnode <- list()
+tuneGrid <- expand.grid(.mtry = best_mtry)
+for (maxnodes in c(5: 15)) {
+    set.seed(1234)
+    rf_maxnode <- train(highrated~.,
+        data = train2,
+        method = "rf",
+        metric = "Accuracy",
+        tuneGrid = tuneGrid,
+        trControl = trControl,
+        importance = TRUE,
+        nodesize = 14,
+        maxnodes = maxnodes,
+        ntree = 300)
+    current_iteration <- toString(maxnodes)
+    store_maxnode[[current_iteration]] <- rf_maxnode
+}
+results_mtry <- resamples(store_maxnode)
+summary(results_mtry)
+
+#store_maxnode <- list(): The results of the model will be stored in this list
+#expand.grid(.mtry=best_mtry): Use the best value of mtry
+#for (maxnodes in c(15:25)) { ... }: Compute the model with values of maxnodes starting from 15 to 25.
+#maxnodes=maxnodes: For each iteration, maxnodes is equal to the current value of maxnodes. i.e 15, 16, 17, ...
+#key <- toString(maxnodes): Store as a string variable the value of maxnode.
+#store_maxnode[[key]] <- rf_maxnode: Save the result of the model in the list.
+#resamples(store_maxnode): Arrange the results of the model
+#summary(results_mtry): Print the summary of all the combination.
+
+#7) search best ntree
+store_maxtrees <- list()
+for (ntree in c(20, 30, 50, 100, 200, 300, 400, 500, 600, 1000, 2000)) {
+    set.seed(5678)
+    rf_maxtrees <- train(highrated~.,
+        data = train2,
+        method = "rf",
+        metric = "Accuracy",
+        tuneGrid = tuneGrid,
+        trControl = trControl,
+        importance = TRUE,
+        nodesize = 14,
+        maxnodes = 15,
+        ntree = ntree)
+    key <- toString(ntree)
+    store_maxtrees[[key]] <- rf_maxtrees
+}
+results_tree <- resamples(store_maxtrees)
+summary(results_tree)
+
+#make model with best values now
+fit_rf <- randomForest(highrated~.,
+    data=train2,
+    method = "rf",
+    metric = "Accuracy",
+    tuneGrid = tuneGrid,
+    trControl = trControl,
+    importance = TRUE,
+    nodesize = 14,
+    ntree = 200,
+    maxnodes = 15,
+    mtry=20
+    )
+
+#make randomforest model
+fit_rf <- randomForest(popularity~., train2, ntree=200, mtry=20, maxnodes =15, trControl = trControl, importance=TRUE, nodesize = 14)
+
+#8) evaluate the model
+prediction <- predict(fit_rf, newdata= test2)
+
+#9) confusion matrix
+confusionMatrix(prediction, test2$highrated)
+
+#visuals
+varImpPlot(fit_rf) #value of attributes plotted
+importance(fit_rf) #expressed in terms of standard deviation
+hist(treesize(fit_rf)
+attributes(fit_rf)
+#plot errors vs trees
+plot(fit_rf, main='Error vs Trees')
+
+hist(treesize(fit_rf)
+
+
+
+#https://www.guru99.com/r-random-forest-tutorial.html
+```
+
+
+
+
+RF Model 1: RF on non normalized (popularity): 100%
+```{r}
+#model
+cat('Random Forest popularity model (non-normalized dataset):\n')
+fit.rf = randomForest(
+  as.factor(popularity) ~ .,
+  data = tedtalks2,
+  do.trace=T,
+  ntree = 100,
+)
+
+#do.trace=T will add extra stuff, will be able to see the OOB error during training, by both class and ntree
+
+fit.rf
+
+#class error
+fit.rf$confusion[, 'class.error'] #00.644
+
+
+#options('digits'=3)
+
+#plot errors vs trees
+plot(fit.rf, main='Error vs Trees')
+
+#histogram of tree size
+#frequency is how often that tree size occurs in that set of trees
+#spiike is smaller, bunch more weight to right hand side, less sloping up and sloping down, more uniform instead of bell shape
+#this goes up to 25, spike when 0-10 freq for normalized version, smooth curve towards right, peaking between 40-70 trees
+hist(treesize(fit.rf)
+     
+#most important variables
+varImpPlot(fit.rf)
+attributes(fit.rf)
+
+#predictor variables
+colnames(train3_numonly)
+
+#meandecreasegini is effectively a measure of how important a variable is for estimating the value of the target variable across all of the trees that make up the forest
+
+#curve is little more steep than normalized version, some things have more weight than others, makes sense since normalized one has things more center, more drawn to 0 and 1
+
+
+```
+
+
+RF Model 2: RF on normalized (popularity): 99%
+```{r}
+#model
+cat('Random Forest popularity model (normalized dataset):\n')
+fit.rf = randomForest(
+  as.factor(popularity) ~ .,
+  data = train3,
+  ntree = 100,
+)
+
+fit.rf
+
+#class error
+fit.rf$confusion[, 'class.error']
+
+
+#plot errors vs trees
+plot(fit.rf, main='Error vs Trees')
+
+#histogram of tree size
+#frequency is how often that tree size occurs in that set of trees
+#spiike is smaller, bunch more weight to right hand side, less sloping up and sloping down, more uniform instead of bell shape
+#this goes up to 25, spike when 0-10 freq for normalized version, smooth curve towards right, peaking between 40-70 trees
+hist(treesize(fit.rf)
+     
+#most important variables
+varImpPlot(fit.rf)
+attributes(fit.rf)
+
+#predictor variables
+colnames(train3_numonly)
+
+#meandecreasegini is effectively a measure of how important a variable is for estimating the value of the target variable across all of the trees that make up the forest
+
+#curve is little more steep than normalized version, some things have more weight than others, makes sense since normalized one has things more center, more drawn to 0 and 1
+
+
+```
+
+
+
+#Random Forest: Highrated
+
+RF Model 3: RF on non normalized (highrated)
+```{r}
+#model
+cat('Random Forest high-rated model (non-normalized dataset):\n')
+fit.rf = randomForest(
+  as.factor(highrated) ~ .,
+  data = train2,
+  ntree = 100,
+)
+
+fit.rf
+
+
+#class error
+fit.rf$confusion[, 'class.error']
+
+
+#plot errors vs trees
+plot(fit.rf, main='Error vs Trees')
+
+#histogram of tree size
+#frequency is how often that tree size occurs in that set of trees
+#spiike is smaller, bunch more weight to right hand side, less sloping up and sloping down, more uniform instead of bell shape
+#this goes up to 25, spike when 0-10 freq for normalized version, smooth curve towards right, peaking between 40-70 trees
+hist(treesize(fit.rf)
+     
+#most important variables
+varImpPlot(fit.rf)
+attributes(fit.rf)
+
+#predictor variables
+colnames(train3_numonly)
+
+#meandecreasegini is effectively a measure of how important a variable is for estimating the value of the target variable across all of the trees that make up the forest
+
+#curve is little more steep than normalized version, some things have more weight than others, makes sense since normalized one has things more center, more drawn to 0 and 1
+
+
+```
+
+
+RF Model 4: RF on normalized (highrated)
+```{r}
+#model
+cat('Random Forest high-rated model (normalized dataset):\n')
+fit.rf = randomForest(
+  as.factor(highrated) ~ .,
+  data = train3,
+  ntree = 100,
+)
+
+fit.rf
+
+
+#class error
+fit.rf$confusion[, 'class.error']
+
+
+#plot errors vs trees
+plot(fit.rf, main='Error vs Trees')
+
+#histogram of tree size
+#frequency is how often that tree size occurs in that set of trees
+#spiike is smaller, bunch more weight to right hand side, less sloping up and sloping down, more uniform instead of bell shape
+#this goes up to 25, spike when 0-10 freq for normalized version, smooth curve towards right, peaking between 40-70 trees
+hist(treesize(fit.rf)
+     
+#most important variables
+varImpPlot(fit.rf)
+attributes(fit.rf)
+
+#predictor variables
+colnames(train3_numonly)
+
+#meandecreasegini is effectively a measure of how important a variable is for estimating the value of the target variable across all of the trees that make up the forest
+
+#curve is little more steep than normalized version, some things have more weight than others, makes sense since normalized one has things more center, more drawn to 0 and 1
+
+
+
+```
+
+#knn
+
+knn Model 1: knn model for popularity (normalized)
+```{r}
+k <- round(sqrt(nrow(Norm_TED)))
+kNN_fit <- class::knn(train=train3_numonly, test=test3_numonly, 
+               cl=train3_labels$popularity,k = k, prob=TRUE)
+print(kNN_fit)
+
+
+## Check the classification accuracy
+(table(kNN_fit, test3_labels$popularity))
+(CrossTable(x = test3_labels$popularity, y = kNN_fit,prop.chisq=F))
+
+
+#Plot knn
+
+#for dataframe, need to choose X and Y variables from plotDF
+(plotDF <- data.frame(test3_numonly, predicted = kNN_fit))
+# First use Convex hull to determine boundary points of each cluster
+(plotDF2 <- data.frame(x = plotDF$views, 
+                       y = plotDF$comments, 
+                       predicted = plotDF$predicted))
+
+find_hull <- function(df) df[chull(df$x, df$y), ]
+
+boundary <- ddply(plotDF2, .variables = "predicted", .fun = find_hull)
+
+ggplot(plotDF, aes(plotDF$views, plotDF$comments, color = predicted, fill = predicted)) + 
+  geom_point(size = 5) + 
+  geom_polygon(data = boundary, aes(x,y), alpha = 0.5)
+
+```
+
+knn Model 2: knn model for highrated (normalized)
+```{r}
+k <- round(sqrt(nrow(Norm_TED)))
+kNN_fit <- class::knn(train=train4_numonly, test=test4_numonly, 
+               cl=train4_labels$highrated,k = k, prob=TRUE)
+print(kNN_fit)
+
+
+## Check the classification accuracy
+(table(kNN_fit, test4_labels$highrated))
+(CrossTable(x = test4_labels$highrated, y = kNN_fit,prop.chisq=F))
+
+
+#Plot knn
+
+#for dataframe, need to choose X and Y variables from plotDF
+(plotDF <- data.frame(test4_numonly, predicted = kNN_fit))
+# First use Convex hull to determine boundary points of each cluster
+(plotDF2 <- data.frame(x = plotDF$positivecount, 
+                       y = plotDF$comments, 
+                       predicted = plotDF$predicted))
+
+find_hull <- function(df) df[chull(df$x, df$y), ]
+
+boundary <- ddply(plotDF2, .variables = "predicted", .fun = find_hull)
+
+ggplot(plotDF, aes(plotDF$positivecount, plotDF$comments, color = predicted, fill = predicted)) + 
+  geom_point(size = 5) + 
+  geom_polygon(data = boundary, aes(x,y), alpha = 0.5)
+
+```
+
+
+#Decision trees
+
+
+CP parameter used to grow tree growth (complexity parameter)
+
+```{r}
+
+#example
+#Base Model
+hr_base_model <- rpart(left ~ ., data = train, method = "class",
+                       control = rpart.control(cp = 0))
+summary(hr_base_model)
+#Plot Decision Tree
+plot(hr_base_model)
+# Examine the complexity plot
+printcp(hr_base_model)
+plotcp(hr_base_model)
+
+#example
+Treefit_IrisCat <- rpart(Iris_Cat_DT_Train$IrisTrainSet_labels ~ ., 
+                         data = Iris_Cat_DT_Train, method="class")
+summary(Treefit_IrisCat)
+predicted_Iris= predict(Treefit_IrisCat,Iris_Cat_DT_Test, type="class")
+(Results_Iris <- data.frame(Predicted=predicted_Iris,Actual=IrisTestSet_labels))
+(table(Results_Iris))
+fancyRpartPlot(Treefit_IrisCat)
+
+```
+
+my dt WORKS
+```{r}
+#Base Model
+hr_base_model <- rpart(popularity ~ ., data = train2, method = "class",
+                       control = rpart.control(cp = 0))
+summary(hr_base_model)
+#Plot Decision Tree
+plot(hr_base_model)
+# Examine the complexity plot
+printcp(hr_base_model)
+plotcp(hr_base_model)
+```
+
+my version
+```{r}
+#make train set with ? for popularity
+train3 <- train2 %>% dplyr::select(-popularity)
+
+train3 <- train3 %>% mutate(popularity="?")
+#mine
+Treefit_popularity <- rpart(train2$popularity ~., 
+                         data = train2, method="class", cp=0.001)
+summary(Treefit_popularity)
+predicted_popularity= predict(Treefit_popularity,test2, type="class")
+(Results_popularity <- data.frame(Predicted=predicted_popularity,Actual=test2$popularity))
+(table(Results_popularity))
+fancyRpartPlot(Treefit_popularity)
+```
+
+```{r}
+#rpart
+
+mytree <- rpart(
+  Fraud ~ RearEnd, 
+  data = train2, 
+  method = "class"
+  minsplit = 2, 
+  minbucket = 1
+)
+
+#plot tree
+fancyRpartPlot(mytree, caption = NULL)
+```
+
+
+
+
+##SUMMARY STATS
+
+#TO DO:
+- Find attributes that are factors in predicting the "popularity" and "highrated" variables (correlation matrix/regression/feature rankings)
+- Find trends/patterns for the talks with 1s in popular column
+- Find trends/patterns for the talks with 1s in highrated column
+- Explore if duration of talk is a factor
+- Explore if day of week/month/event location are factors for increasing popularity or high-rated
+- Does publish date or filming month play a role?
+- Explore if topic of talk is a factor
+- Explore if occupation of spekaer is factor
+- Explore if comments/langauges/tags have any role in popularity and ratings of talk
+- Does sentiment score of talk have a relationship with predicting certain ratings from the ratings category?
+- What are most common words used in transcripts for talks that are popular? (Word cloud)
+- What are most common words used in transcripts for talks that are high-rated? (word cloud)
+
+Check distributions if normally distributed or not
+```{r}
+#check distributions:
+#qqnorm(tedtalkshigh$positivecount);qqline(tedtalkshigh$positivecount, col = 2)
+
+#qqplot(tedtalkshigh$highrated)
+
+#ggdensity(tedtalks$positivecount, size=10)
+
+#add mean to density plot and check po
+ggdensity(tedtalks, x = "positivecount", fill = "lightgray",
+   add = "mean", rug = TRUE)
+
+```
+
+
+
+TED ratings dataframe
+```{r}
+ted_ratings_df <- tedtalks %>% dplyr::select(id, funny, beautiful, confusing, jawdropping, informative, ingenius, obnoxious, fascinating, unconvincing, courageous, persuasive, inspiring, longwinded, positivecount, negativecount, transcript, sentiment, tagscore, popularity, highrated)
+```
+
+
+word cloud for tags
+```{r}
+#CORPUS
+TheCorpus = Corpus(VectorSource(talk_tags$tags1))
+
+corpus_clean <- TheCorpus
+
+#run word cloud version 1
+#dev.new(width = 1000, height = 1000, unit = "px")
+wordcloud(corpus_clean, min.freq = 20, random.order = FALSE, colors=brewer.pal(8, "Dark2"), scale=c(3.5,0.25))
+
+#run word cloud version 2
+#wordcloud(corpus_clean, max.words =1000, min.freq=70,scale=c(4,.5), 
+          # random.order = FALSE,rot.per=.5,vfont=c("sans serif","plain"),colors=palette())
+
+
+#term document matrix
+dtm <- TermDocumentMatrix(corpus_clean)
+m <- as.matrix(dtm)
+v <- sort(rowSums(m),decreasing=TRUE)
+d <- data.frame(word = names(v),freq=v)
+#head(d, 10)
+
+unique(talk_tags$tags1)
+
+#Plot word frequencies
+    barplot(d[1:10,]$freq, las = 2, names.arg = d[1:10,]$word,
+        col ="lightblue", main ="Most frequent tags",
+        ylab = "Word frequencies")
+    
+#find word associations
+findAssocs(dtm, terms = "inspiring", corlimit = 0.3)
+```
+
+word cloud for all TED talks
+```{r}
+#new popular only dataframe
+#tedtalkspop <- tedtalks %>% filter(popularity ==1) %>% dplyr::select(id, transcript)
+
+
+
+#tedtalkspop2 <- tedtalks %>% inner_join(tedtranscripts, by="url")
+
+#for (i in 1:nrow(tedtalkspop)){
+  
+ # data = tedtalkspop$transcript[i]
+ # data = gsub("'","",data)
+
+#}
+
+#change encoding
+tedtalks$transcript <- as.character(tedtalks$transcript)
+#Encoding(tedtalkspop$transcript) <- "UTF-8"
+#str_replace_all(tedtalkspop$transcript, "Ã,Ã‚", "")
+
+#replacing all the ;,/ to blanks
+#tedtalkspop$transcript <- tedtalkspop$transcript %>% str_replace_all('/',' ') %>% str_replace_all(',',' ')   %>% str_replace_all(';',' ') %>% str_replace_all('\\+',' ') %>% str_replace_all('"',' ') %>% str_replace_all('"',' ') %>% tolower()
+
+TheCorpus = Corpus(VectorSource(tedtalks$transcript))
+#CORPUS
+#TheCorpus = Corpus(VectorSource(tedtalkspop$transcript))
+
+#inspect(TheCorpus)
+#corpus_clean <- tm_map(TheCorpus, content_transformer(tolower))
+
+#lowercase
+corpus_clean <- tm_map(TheCorpus, tolower)
+
+# function from textclean to remove curly quotes ” and ’
+#corpus_clean <- tm_map(corpus, content_transformer(replace_curly_quote))
+# function from textclean to replace "it's" to "it is"
+#corpus_clean <- tm_map(corpus, replace_contraction)
+
+#remove special characters
+#for(j in seq(tedtalkspop$transcript))  {
+#  tedtalkspop$transcript[[j]] <- gsub("/", " ", tedtalkspop$transcript[[j]])        tedtalkspop$transcript[[j]] <- gsub("@", " ", #tedtalkspop$transcript[[j]])        tedtalkspop$transcript[[j]] <- gsub("\\|", " ", tedtalkspop$transcript[[j]])  
+#  }
+
+
+#remove numbers
+corpus_clean <- tm_map(corpus_clean, removeNumbers)
+
+#remove stop words
+myStopwords <- c(stopwords('english'), "like", "I", "i") 
+corpus_clean <- tm_map(corpus_clean, removeWords, myStopwords)
+
+
+
+#remove punctuation
+corpus_clean <- tm_map(corpus_clean, removePunctuation)
+#removeNumPunct <- function(x) gsub("[^[:alpha:][:space:]]*","",x)
+#corpus_clean <- tm_map(corpus_clean, content_transformer(removeNumPunct))
+
+#strip white space
+corpus_clean <- tm_map(corpus_clean, stripWhitespace)
+
+#text document
+#corpus_clean = tm_map(corpus_clean, PlainTextDocument)
+
+
+
+
+#select certain row/talk(s)
+#corpus_clean <- corpus_clean[12:62]
+
+#run word cloud version 1
+#dev.new(width = 1000, height = 1000, unit = "px")
+wordcloud(corpus_clean, min.freq = 1500, random.order = FALSE, colors=brewer.pal(8, "Dark2"), scale=c(3.5,0.25))
+
+#run word cloud version 2
+#wordcloud(corpus_clean, max.words =1000, min.freq=70,scale=c(4,.5), 
+         #  random.order = FALSE,rot.per=.5,vfont=c("sans serif","plain"),colors=palette())
+
+
+#term document matrix
+dtm <- TermDocumentMatrix(corpus_clean)
+m <- as.matrix(dtm)
+v <- sort(rowSums(m),decreasing=TRUE)
+d <- data.frame(word = names(v),freq=v)
+head(d, 10)
+
+
+
+#Plot word frequencies
+    barplot(d[1:20,]$freq, las = 2, names.arg = d[1:20,]$word,
+        col ="lightblue", main ="Most frequent words for all TED talks",
+        ylab = "Word frequencies")
+    
+#find word associations
+findAssocs(dtm, terms = "", corlimit = 0.3)
+```
+
+
+word cloud for popular talks
+```{r}
+#new popular only dataframe
+tedtalkspop <- tedtalks %>% filter(popularity ==1) %>% dplyr::select(id, transcript)
+
+
+
+#tedtalkspop2 <- tedtalks %>% inner_join(tedtranscripts, by="url")
+
+#for (i in 1:nrow(tedtalkspop)){
+  
+ # data = tedtalkspop$transcript[i]
+ # data = gsub("'","",data)
+
+#}
+
+#change encoding
+tedtalkspop$transcript <- as.character(tedtalkspop$transcript)
+#Encoding(tedtalkspop$transcript) <- "UTF-8"
+#str_replace_all(tedtalkspop$transcript, "Ã,Ã‚", "")
+
+#replacing all the ;,/ to blanks
+#tedtalkspop$transcript <- tedtalkspop$transcript %>% str_replace_all('/',' ') %>% str_replace_all(',',' ')   %>% str_replace_all(';',' ') %>% str_replace_all('\\+',' ') %>% str_replace_all('"',' ') %>% str_replace_all('"',' ') %>% tolower()
+
+TheCorpus = Corpus(VectorSource(tedtranscripts$transcript))
+#CORPUS
+TheCorpus = Corpus(VectorSource(tedtalkspop$transcript))
+
+#inspect(TheCorpus)
+#corpus_clean <- tm_map(TheCorpus, content_transformer(tolower))
+
+#lowercase
+corpus_clean <- tm_map(TheCorpus, tolower)
+
+# function from textclean to remove curly quotes ” and ’
+#corpus_clean <- tm_map(corpus, content_transformer(replace_curly_quote))
+# function from textclean to replace "it's" to "it is"
+#corpus_clean <- tm_map(corpus, replace_contraction)
+
+#remove special characters
+#for(j in seq(tedtalkspop$transcript))  {
+#  tedtalkspop$transcript[[j]] <- gsub("/", " ", tedtalkspop$transcript[[j]])        tedtalkspop$transcript[[j]] <- gsub("@", " ", #tedtalkspop$transcript[[j]])        tedtalkspop$transcript[[j]] <- gsub("\\|", " ", tedtalkspop$transcript[[j]])  
+#  }
+
+
+#remove numbers
+corpus_clean <- tm_map(corpus_clean, removeNumbers)
+
+#remove stop words
+myStopwords <- c(stopwords('english'), "like", "I", "i") 
+corpus_clean <- tm_map(corpus_clean, removeWords, myStopwords)
+
+
+
+#remove punctuation
+corpus_clean <- tm_map(corpus_clean, removePunctuation)
+#removeNumPunct <- function(x) gsub("[^[:alpha:][:space:]]*","",x)
+#corpus_clean <- tm_map(corpus_clean, content_transformer(removeNumPunct))
+
+#strip white space
+corpus_clean <- tm_map(corpus_clean, stripWhitespace)
+
+#text document
+#corpus_clean = tm_map(corpus_clean, PlainTextDocument)
+
+
+
+
+#select certain row/talk(s)
+#corpus_clean <- corpus_clean[12:62]
+
+#run word cloud version 1
+#dev.new(width = 1000, height = 1000, unit = "px")
+wordcloud(corpus_clean, min.freq = 500, random.order = FALSE, colors=brewer.pal(8, "Dark2"), scale=c(3.5,0.25))
+
+#run word cloud version 2
+#wordcloud(corpus_clean, max.words =1000, min.freq=70,scale=c(4,.5), 
+         #  random.order = FALSE,rot.per=.5,vfont=c("sans serif","plain"),colors=palette())
+
+
+#term document matrix
+dtm <- TermDocumentMatrix(corpus_clean)
+m <- as.matrix(dtm)
+v <- sort(rowSums(m),decreasing=TRUE)
+d <- data.frame(word = names(v),freq=v)
+head(d, 10)
+
+
+
+#Plot word frequencies
+    barplot(d[1:20,]$freq, las = 2, names.arg = d[1:20,]$word,
+        col ="lightblue", main ="Most frequent words for popular talks",
+        ylab = "Word frequencies")
+    
+#find word associations
+findAssocs(dtm, terms = "", corlimit = 0.3)
+```
+
+
+
+word cloud for non-popular talks
+```{r}
+#new popular only dataframe
+tedtalkspop <- tedtalks %>% filter(popularity ==0) %>% dplyr::select(id, transcript)
+
+
+
+#tedtalkspop2 <- tedtalks %>% inner_join(tedtranscripts, by="url")
+
+#for (i in 1:nrow(tedtalkspop)){
+  
+ # data = tedtalkspop$transcript[i]
+ # data = gsub("'","",data)
+
+#}
+
+#change encoding
+tedtalkspop$transcript <- as.character(tedtalkspop$transcript)
+#Encoding(tedtalkspop$transcript) <- "UTF-8"
+#str_replace_all(tedtalkspop$transcript, "Ã,Ã‚", "")
+
+#replacing all the ;,/ to blanks
+#tedtalkspop$transcript <- tedtalkspop$transcript %>% str_replace_all('/',' ') %>% str_replace_all(',',' ')   %>% str_replace_all(';',' ') %>% str_replace_all('\\+',' ') %>% str_replace_all('"',' ') %>% str_replace_all('"',' ') %>% tolower()
+
+#TheCorpus = Corpus(VectorSource(tedtranscripts$transcript))
+#CORPUS
+TheCorpus = Corpus(VectorSource(tedtalkspop$transcript))
+
+#inspect(TheCorpus)
+#corpus_clean <- tm_map(TheCorpus, content_transformer(tolower))
+
+#lowercase
+corpus_clean <- tm_map(TheCorpus, tolower)
+
+# function from textclean to remove curly quotes ” and ’
+#corpus_clean <- tm_map(corpus, content_transformer(replace_curly_quote))
+# function from textclean to replace "it's" to "it is"
+#corpus_clean <- tm_map(corpus, replace_contraction)
+
+#remove special characters
+#for(j in seq(tedtalkspop$transcript))  {
+#  tedtalkspop$transcript[[j]] <- gsub("/", " ", tedtalkspop$transcript[[j]])        tedtalkspop$transcript[[j]] <- gsub("@", " ", #tedtalkspop$transcript[[j]])        tedtalkspop$transcript[[j]] <- gsub("\\|", " ", tedtalkspop$transcript[[j]])  
+#  }
+
+
+#remove numbers
+corpus_clean <- tm_map(corpus_clean, removeNumbers)
+
+#remove stop words
+myStopwords <- c(stopwords('english'), "like", "I", "i") 
+corpus_clean <- tm_map(corpus_clean, removeWords, myStopwords)
+
+
+
+#remove punctuation
+corpus_clean <- tm_map(corpus_clean, removePunctuation)
+#removeNumPunct <- function(x) gsub("[^[:alpha:][:space:]]*","",x)
+#corpus_clean <- tm_map(corpus_clean, content_transformer(removeNumPunct))
+
+#strip white space
+corpus_clean <- tm_map(corpus_clean, stripWhitespace)
+
+#text document
+#corpus_clean = tm_map(corpus_clean, PlainTextDocument)
+
+
+
+
+#select certain row/talk(s)
+#corpus_clean <- corpus_clean[12:62]
+
+#run word cloud version 1
+#dev.new(width = 1000, height = 1000, unit = "px")
+wordcloud(corpus_clean, min.freq = 1500, random.order = FALSE, colors=brewer.pal(8, "Dark2"), scale=c(3.5,0.25))
+
+#run word cloud version 2
+#wordcloud(corpus_clean, max.words =1000, min.freq=70,scale=c(4,.5), 
+         #  random.order = FALSE,rot.per=.5,vfont=c("sans serif","plain"),colors=palette())
+
+
+#term document matrix
+dtm <- TermDocumentMatrix(corpus_clean)
+m <- as.matrix(dtm)
+v <- sort(rowSums(m),decreasing=TRUE)
+d <- data.frame(word = names(v),freq=v)
+head(d, 10)
+
+
+
+#Plot word frequencies
+    barplot(d[1:20,]$freq, las = 2, names.arg = d[1:20,]$word,
+        col ="lightblue", main ="Most frequent words for non-popular talks",
+        ylab = "Word frequencies")
+    
+#find word associations
+findAssocs(dtm, terms = "", corlimit = 0.3)
+```
+
+word cloud for highrated talks
+```{r}
+#new popular only dataframe
+tedtalkshr <- tedtalks %>% filter(highrated ==1) %>% dplyr::select(id, transcript)
+
+
+
+#tedtalkspop2 <- tedtalks %>% inner_join(tedtranscripts, by="url")
+
+#for (i in 1:nrow(tedtalkspop)){
+  
+ # data = tedtalkspop$transcript[i]
+ # data = gsub("'","",data)
+
+#}
+
+#change encoding
+tedtalkshr$transcript <- as.character(tedtalkshr$transcript)
+#Encoding(tedtalkspop$transcript) <- "UTF-8"
+#str_replace_all(tedtalkspop$transcript, "Ã,Ã‚", "")
+
+#replacing all the ;,/ to blanks
+#tedtalkspop$transcript <- tedtalkspop$transcript %>% str_replace_all('/',' ') %>% str_replace_all(',',' ')   %>% str_replace_all(';',' ') %>% str_replace_all('\\+',' ') %>% str_replace_all('"',' ') %>% str_replace_all('"',' ') %>% tolower()
+
+#TheCorpus = Corpus(VectorSource(tedtranscripts$transcript))
+#CORPUS
+TheCorpus = Corpus(VectorSource(tedtalkshr$transcript))
+
+#inspect(TheCorpus)
+#corpus_clean <- tm_map(TheCorpus, content_transformer(tolower))
+
+#lowercase
+corpus_clean <- tm_map(TheCorpus, tolower)
+
+# function from textclean to remove curly quotes ” and ’
+#corpus_clean <- tm_map(corpus, content_transformer(replace_curly_quote))
+# function from textclean to replace "it's" to "it is"
+#corpus_clean <- tm_map(corpus, replace_contraction)
+
+#remove special characters
+#for(j in seq(tedtalkspop$transcript))  {
+#  tedtalkspop$transcript[[j]] <- gsub("/", " ", tedtalkspop$transcript[[j]])        tedtalkspop$transcript[[j]] <- gsub("@", " ", #tedtalkspop$transcript[[j]])        tedtalkspop$transcript[[j]] <- gsub("\\|", " ", tedtalkspop$transcript[[j]])  
+#  }
+
+
+#remove numbers
+corpus_clean <- tm_map(corpus_clean, removeNumbers)
+
+#remove stop words
+myStopwords <- c(stopwords('english'), "like", "I", "i") 
+corpus_clean <- tm_map(corpus_clean, removeWords, myStopwords)
+
+
+
+#remove punctuation
+corpus_clean <- tm_map(corpus_clean, removePunctuation)
+#removeNumPunct <- function(x) gsub("[^[:alpha:][:space:]]*","",x)
+#corpus_clean <- tm_map(corpus_clean, content_transformer(removeNumPunct))
+
+#strip white space
+corpus_clean <- tm_map(corpus_clean, stripWhitespace)
+
+#text document
+#corpus_clean = tm_map(corpus_clean, PlainTextDocument)
+
+
+
+
+#select certain row/talk(s)
+#corpus_clean <- corpus_clean[12:62]
+
+#run word cloud version 1
+#dev.new(width = 1000, height = 1000, unit = "px")
+wordcloud(corpus_clean, min.freq = 500, random.order = FALSE, colors=brewer.pal(8, "Dark2"), scale=c(3.5,0.25))
+
+#run word cloud version 2
+#wordcloud(corpus_clean, max.words =1000, min.freq=70,scale=c(4,.5), 
+         #  random.order = FALSE,rot.per=.5,vfont=c("sans serif","plain"),colors=palette())
+
+
+#term document matrix
+dtm <- TermDocumentMatrix(corpus_clean)
+m <- as.matrix(dtm)
+v <- sort(rowSums(m),decreasing=TRUE)
+d <- data.frame(word = names(v),freq=v)
+head(d, 10)
+
+
+
+#Plot word frequencies
+    barplot(d[1:20,]$freq, las = 2, names.arg = d[1:20,]$word,
+        col ="lightblue", main ="Most frequent words for high-rated talks",
+        ylab = "Word frequencies")
+    
+#find word associations
+findAssocs(dtm, terms = "", corlimit = 0.3)
+```
+
+
+
+word cloud for non-highrated talks
+```{r}
+#new popular only dataframe
+tedtalkshr <- tedtalks %>% filter(highrated ==0) %>% dplyr::select(id, transcript)
+
+
+
+#tedtalkspop2 <- tedtalks %>% inner_join(tedtranscripts, by="url")
+
+#for (i in 1:nrow(tedtalkspop)){
+  
+ # data = tedtalkspop$transcript[i]
+ # data = gsub("'","",data)
+
+#}
+
+#change encoding
+tedtalkshr$transcript <- as.character(tedtalkshr$transcript)
+#Encoding(tedtalkspop$transcript) <- "UTF-8"
+#str_replace_all(tedtalkspop$transcript, "Ã,Ã‚", "")
+
+#replacing all the ;,/ to blanks
+#tedtalkspop$transcript <- tedtalkspop$transcript %>% str_replace_all('/',' ') %>% str_replace_all(',',' ')   %>% str_replace_all(';',' ') %>% str_replace_all('\\+',' ') %>% str_replace_all('"',' ') %>% str_replace_all('"',' ') %>% tolower()
+
+#TheCorpus = Corpus(VectorSource(tedtranscripts$transcript))
+#CORPUS
+TheCorpus = Corpus(VectorSource(tedtalkshr$transcript))
+
+#inspect(TheCorpus)
+#corpus_clean <- tm_map(TheCorpus, content_transformer(tolower))
+
+#lowercase
+corpus_clean <- tm_map(TheCorpus, tolower)
+
+# function from textclean to remove curly quotes ” and ’
+#corpus_clean <- tm_map(corpus, content_transformer(replace_curly_quote))
+# function from textclean to replace "it's" to "it is"
+#corpus_clean <- tm_map(corpus, replace_contraction)
+
+#remove special characters
+#for(j in seq(tedtalkspop$transcript))  {
+#  tedtalkspop$transcript[[j]] <- gsub("/", " ", tedtalkspop$transcript[[j]])        tedtalkspop$transcript[[j]] <- gsub("@", " ", #tedtalkspop$transcript[[j]])        tedtalkspop$transcript[[j]] <- gsub("\\|", " ", tedtalkspop$transcript[[j]])  
+#  }
+
+
+#remove numbers
+corpus_clean <- tm_map(corpus_clean, removeNumbers)
+
+#remove stop words
+myStopwords <- c(stopwords('english'), "like", "I", "i") 
+corpus_clean <- tm_map(corpus_clean, removeWords, myStopwords)
+
+
+
+#remove punctuation
+corpus_clean <- tm_map(corpus_clean, removePunctuation)
+#removeNumPunct <- function(x) gsub("[^[:alpha:][:space:]]*","",x)
+#corpus_clean <- tm_map(corpus_clean, content_transformer(removeNumPunct))
+
+#strip white space
+corpus_clean <- tm_map(corpus_clean, stripWhitespace)
+
+#text document
+#corpus_clean = tm_map(corpus_clean, PlainTextDocument)
+
+
+
+
+#select certain row/talk(s)
+#corpus_clean <- corpus_clean[12:62]
+
+#run word cloud version 1
+#dev.new(width = 1000, height = 1000, unit = "px")
+wordcloud(corpus_clean, min.freq = 1350, random.order = FALSE, colors=brewer.pal(8, "Dark2"), scale=c(3.5,0.25))
+
+#run word cloud version 2
+#wordcloud(corpus_clean, max.words =1000, min.freq=70,scale=c(4,.5), 
+         #  random.order = FALSE,rot.per=.5,vfont=c("sans serif","plain"),colors=palette())
+
+
+#term document matrix
+dtm <- TermDocumentMatrix(corpus_clean)
+m <- as.matrix(dtm)
+v <- sort(rowSums(m),decreasing=TRUE)
+d <- data.frame(word = names(v),freq=v)
+head(d, 10)
+
+
+
+#Plot word frequencies
+    barplot(d[1:20,]$freq, las = 2, names.arg = d[1:20,]$word,
+        col ="lightblue", main ="Most frequent words for high-rated talks",
+        ylab = "Word frequencies")
+    
+#find word associations
+findAssocs(dtm, terms = "", corlimit = 0.3)
+```
+
+word cloud for elite talks
+```{r}
+#new popular only dataframe
+tedtalkselite <- tedtalks %>% dplyr::select(id, transcript)
+
+
+
+#tedtalkspop2 <- tedtalks %>% inner_join(tedtranscripts, by="url")
+
+#for (i in 1:nrow(tedtalkspop)){
+  
+ # data = tedtalkspop$transcript[i]
+ # data = gsub("'","",data)
+
+#}
+
+#change encoding
+tedtalkselite$transcript <- as.character(tedtalkselite$transcript)
+#Encoding(tedtalkspop$transcript) <- "UTF-8"
+#str_replace_all(tedtalkspop$transcript, "Ã,Ã‚", "")
+
+#replacing all the ;,/ to blanks
+#tedtalkspop$transcript <- tedtalkspop$transcript %>% str_replace_all('/',' ') %>% str_replace_all(',',' ')   %>% str_replace_all(';',' ') %>% str_replace_all('\\+',' ') %>% str_replace_all('"',' ') %>% str_replace_all('"',' ') %>% tolower()
+
+#TheCorpus = Corpus(VectorSource(tedtranscripts$transcript))
+#CORPUS
+TheCorpus = Corpus(VectorSource(tedtalkselite$transcript))
+
+#inspect(TheCorpus)
+#corpus_clean <- tm_map(TheCorpus, content_transformer(tolower))
+
+#lowercase
+corpus_clean <- tm_map(TheCorpus, tolower)
+
+# function from textclean to remove curly quotes ” and ’
+#corpus_clean <- tm_map(corpus, content_transformer(replace_curly_quote))
+# function from textclean to replace "it's" to "it is"
+#corpus_clean <- tm_map(corpus, replace_contraction)
+
+#remove special characters
+#for(j in seq(tedtalkspop$transcript))  {
+#  tedtalkspop$transcript[[j]] <- gsub("/", " ", tedtalkspop$transcript[[j]])        tedtalkspop$transcript[[j]] <- gsub("@", " ", #tedtalkspop$transcript[[j]])        tedtalkspop$transcript[[j]] <- gsub("\\|", " ", tedtalkspop$transcript[[j]])  
+#  }
+
+
+#remove numbers
+corpus_clean <- tm_map(corpus_clean, removeNumbers)
+
+#remove stop words
+myStopwords <- c(stopwords('english'), "like", "I", "i") 
+corpus_clean <- tm_map(corpus_clean, removeWords, myStopwords)
+
+
+
+#remove punctuation
+corpus_clean <- tm_map(corpus_clean, removePunctuation)
+#removeNumPunct <- function(x) gsub("[^[:alpha:][:space:]]*","",x)
+#corpus_clean <- tm_map(corpus_clean, content_transformer(removeNumPunct))
+
+#strip white space
+corpus_clean <- tm_map(corpus_clean, stripWhitespace)
+
+#text document
+#corpus_clean = tm_map(corpus_clean, PlainTextDocument)
+
+
+
+
+#select certain row/talk(s)
+#corpus_clean <- corpus_clean[12:62]
+
+#run word cloud version 1
+#dev.new(width = 1000, height = 1000, unit = "px")
+wordcloud(corpus_clean, min.freq = 1500, random.order = FALSE, colors=brewer.pal(8, "Dark2"), scale=c(3.5,0.25))
+
+#run word cloud version 2
+#wordcloud(corpus_clean, max.words =1000, min.freq=70,scale=c(4,.5), 
+         #  random.order = FALSE,rot.per=.5,vfont=c("sans serif","plain"),colors=palette())
+
+
+#term document matrix
+dtm <- TermDocumentMatrix(corpus_clean)
+m <- as.matrix(dtm)
+v <- sort(rowSums(m),decreasing=TRUE)
+d <- data.frame(word = names(v),freq=v)
+head(d, 10)
+
+
+
+#Plot word frequencies
+    barplot(d[1:20,]$freq, las = 2, names.arg = d[1:20,]$word,
+        col ="lightblue", main ="Most frequent words for elite talks",
+        ylab = "Word frequencies")
+    
+#find word associations
+findAssocs(dtm, terms = "", corlimit = 0.3)
+```
+
+
+ted elite talks
+```{r}
+qplot(tedtalkselite$tagscore, tedtalks$views)
+qplot(tedtalks$views)
+qplot(tedtalkselite$views)
+range(tedtalkseliteviews)
+min(tedtalkselite$views) #1736329
+max(tedtalkselite$views) #47227110
+min(tedtalks$views) #155895
+max(tedtalks$views) #47227110
+min(tedtalks$positivecount) #93
+min(tedtalks$negativecount) #5
+max(tedtalkselite$positivecount)
+mean(tedtalks$views) #1740295
+mean(tedtalks$positivecount) #1839.204
+mean(tedtalks$negativecount) #179.5213
+mean(tedtalks$comments) #192.5707
+mean(tedtalks$languages) #28.29145
+mean(tedtalks$duration) #821.76
+mean(tedtalks$num_tags) #7.553304
+mean(tedtalks$sentiment) #59.84799
+ 
+mean(tedtalkselite$sentiment) #69.09442
+mean(tedtalkselite$num_tags) #6.939914
+mean(tedtalkselite$duration)#874.367
+mean(tedtalkselite$languages) #35.48069
+mean(tedtalkselite$comments) #445.8734
+min(tedtalkselite$negativecount) #42
+min(tedtalkselite$positivecount) #1989
+mean(tedtalkselite$views) #4587641
+mean(tedtalkselite$positivecount) #5151.298
+mean(tedtalkselite$negativecount) #354.8047
+#Elite ted talks had a minimum of 1,736,329 views, 4,587,641 average views, 5151.298 mean for count of positive ratings, , 354.8047 mean for count of negative ratings, 
+```
+tags word cloud
+```{r}
+set.seed(1234)
+talk_tags %>%
+  comparison.cloud(colors = c("#F8766D", "#00BFC4"), max.words = 100)
+
+?comparison.cloud()
+comparison.cloud(corpus_clean)
+```
+
+popularity
+```{r}
+counts <- table(mtcars$vs, mtcars$gear)
+barplot(counts, main="Car Distribution by Gears and VS",
+  xlab="Number of Gears", col=c("darkblue","red"),
+  legend = rownames(counts))
+
+counts <- table(tedtalks$popularity==1, tedtalks$popularity==0)
+barplot(counts, main="Car Distribution by Gears and VS",
+  xlab="Number of Gears", col=c("darkblue","red"),
+  legend = rownames(counts))
+```
+
+tag sentiment and views
+```{r}
+qplot(tedtalks$tagscore, tedtalks$views)
+plot(tedtalks$tagscore, tedtalks$views)
+hist(tedtalks$tagscore, tedtalks$views)
+
+```
+
+transcript sentiment and views
+```{r}
+qplot(tedtalks$sentiment, tedtalks$views)
+plot(tedtalks$sentiment, tedtalks$views)
+hist(tedtalks$sentiment, tedtalks$views)
+
+barplot(tedtalks$po, main="Car Distribution", 
+   xlab="Number of Gears")
+```
+
+transcript sentiment and positive ratings
+```{r}
+qplot(tedtalks$sentiment, tedtalks$positivecount)
+plot(tedtalks$sentiment, tedtalks$positivecount)
+```
+
+Regression for finding popularity
+```{r}
+#Read Data File
+#mydata <- read.csv("http://www.ats.ucla.edu/stat/data/binary.csv")
+
+#Run Logistic Regression
+mylogit <- glm(popularity ~ ., data = TEDN, family = "binomial")
+
+#Create Logistic Regression Function
+unilogit = function(df,depvar) {
+  depvar1 = deparse(substitute(depvar))
+  lapply(names(df)[which(names(df)!= depvar1)], function(x)
+  {mylogit = glm(formula(paste(depvar1,"~",x)), data = df, family = "binomial")
+  summary(mylogit)$coefficient}
+  )
+}
+
+#Run Function
+univariate = unilogit(Norm_TED, popularity)
+
+#Merge all the coefficients
+final <- do.call(rbind, univariate)
+
+#Make the table formatable
+univList = cbind(data.frame(Variable = row.names(final)),final)
+FinalList = subset(univList, Variable!="(Intercept)")
+FinalList[,"Wald ChiSquare"] = FinalList[4]^2
+FinalList[,"Rank"] = rank(-FinalList[6])
+FinalList = FinalList[order(FinalList$Rank),]
+
+#https://www.listendata.com/2015/10/r-variable-selection-wald-chi-square.html
+
+
+lapply(df, levels)
+
+lapply(tedtalks, levels)
+
+```
+
+Linear regression
+```{r}
+lm1 <- lm(predictorvariable ~ x1+x2+x3, data=dataframe.df)
+
+lm1 <- lm(popularity ~., tedtalks)
+
+
+```
+
+
+VISUAL: speaker_occupation  plot
+```{r}
+
+
+occupation_df <- data.frame(table(tedtalks$speaker_occupation))
+colnames(occupation_df) <- c("occupation", "count")
+occupation_df <- occupation_df %>% arrange(desc(count))
+head(occupation_df, 10)
+
+#plot
+ggplot(head(occupation_df,30), 
+       aes(x=reorder(occupation, count), 
+           y=count, fill=occupation)) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  geom_bar(stat="identity") + 
+  xlab("Occupation")+
+  guides(fill=FALSE)
+```
+
+Month dataframe
+```{r}
+#show how many ted talks in each month
+month_df <- as.data.frame(table(tedtalks$filming_month))
+month_df
+
+colnames(month_df) <- c("Month", "Talks")
+month_df$Month <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+#Turn your 'Month' column into a character vector
+month_df$Month <- as.character(month_df$Month)
+#Then turn it back into an ordered factor
+month_df$Month <- factor(month_df$Month, levels=unique(month_df$Month))
+options(repr.plot.width = 5, repr.plot.height = 4)
+
+```
+
+VISUAL: TED Talks by month
+```{r}
+p8 <- ggplot(data = month_df, aes(Month, Talks, fill = Talks)) +
+      geom_bar(position = "dodge", stat = "identity") +
+      geom_text(aes(label = Talks), vjust = 1.6, color = "white", size = 3)  +
+      ggtitle("Ted Talks by Months")
+p8
+
+```
+
+VISUAL: Ted Talks by Day
+```{r}
+#convert data into variables
+tedtalks$date_pub = anydate(tedtalks$published_date)
+tedtalks$month = month(tedtalks$date_pub)
+tedtalks$year = year(tedtalks$date_pub)
+tedtalks$day = weekdays(tedtalks$date_pub,abbreviate = TRUE)
+head(tedtalks,3)
+
+#day dataframe
+day_df <- as.data.frame(table(tedtalks$day))
+names(day_df)[1]<-"Day"
+names(day_df)[2] <- "Talks"
+
+p7 <- ggplot(data = day_df, aes(Day, Talks, fill = Talks)) +
+      geom_bar(position = "dodge", stat = "identity") +
+      geom_text(aes(label = Talks), vjust = 1.6, color = "white", size = 3)  +
+      ggtitle("TED Talks by Day Published")
+p7
+
+
+```
+
+distribution of talk duration
+```{r}
+median_duration <- median(tedtalks$duration)
+cat("Median number of duration: ", median(tedtalks$duration)) #848 minutes
+
+# simple r histogram:
+# hist(ted$duration)
+# a nicer histogram using ggplot, also adding median number of duration line
+duration_hist = ggplot(tedtalks,aes(duration,..count..)) + 
+  geom_histogram(fill="turquoise") +
+  labs(x="Duration",y="How Many Talks in that duration",title="Histogram (Distribution) of Durations of TedTalks") + 
+  #scale_x_continuous(limits=c(0,1500),breaks=seq(0,1500,150)) + 
+  geom_vline(aes(xintercept = median(tedtalks$duration)),linetype=4,size=1,color="white") +
+  geom_vline(aes(xintercept = mean(tedtalks$duration)),linetype=4,size=1,color="blue")
+duration_hist
+```
+
+##Correlation
+
+correlation matrix
+```{r}
+#colnames(tedtalks)
+         
+col_numeric =  c(16,1,3,35, 10, 6) # view, comments, duration, num_tags, published_date, languages)
+ted_numeric = tedtalks[,col_numeric]
+pairs(ted_numeric)
+```
+
+correlation matrix thorough
+```{r}
+colnames(tedtalks)
+         
+col_numeric =  c(16,1,3,35, 10, 6, 40, 41, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34) # view, comments, duration, num_tags, published_date, languages, month, year, ratings)
+ted_numeric = tedtalks[,col_numeric]
+pairs(ted_numeric)
+```
+
+
+VISUAL: correlation matrix 
+```{r}
+col_numeric2 =  c(16,1,3,35, 6) # view, comments, duration, num_tags, published_date, languages)
+ted_numeric2 = tedtalks[,col_numeric2]
+
+sapply(ted_numeric2, is.numeric)
+
+
+
+
+cor_matrix <- cor(ted_numeric2)
+res <- cor.mtest(ted_numeric2, conf.level = .95)
+res
+#plot
+corrplot::corrplot(cor_matrix,method="shade",bg="white",
+                   p.mat = res$p,  sig.level = c(.001, .01, .05), pch.cex = .9, insig = "label_sig", pch.col = "white")
+#title="Correlation Matrix (by color) and significane (*)"
+```
+
+VISUAL: correlation matrix more through (months and years)
+```{r}
+
+
+#colnumeric with names
+colnames(tedtalks)
+col_numeric2 =  c("view","comments",3, 36, 6, 40, 41) # view, comments, duration, num_tags, published_date, languages)
+ted_numeric2 = tedtalks[,col_numeric2]
+
+
+
+
+colnames(tedtalks)
+col_numeric2 =  c(16,1,3, 36, 6, 40, 41) # view, comments, duration, num_tags, published_date, languages)
+ted_numeric2 = tedtalks[,col_numeric2]
+
+sapply(ted_numeric2, is.numeric)
+
+
+
+
+cor_matrix <- cor(ted_numeric2)
+res <- cor.mtest(ted_numeric2, conf.level = .95)
+res
+#plot
+corrplot::corrplot(cor_matrix,method="shade",bg="white",
+                   p.mat = res$p,  sig.level = c(.001, .01, .05), pch.cex = .9, insig = "label_sig", pch.col = "white")
+#title="Correlation Matrix (by color) and significane (*)"
+```
+
+VISUAL: correlation matrix more through (months and years)
+```{r}
+
+colnames(teddfm)
+col_numeric2 =  c(17,1,3, 10, 6, 20) # view, comments, duration, num_tags, published_date, languages)
+ted_numeric2 = teddfm[,col_numeric2]
+
+sapply(ted_numeric2, is.numeric)
+
+
+
+
+cor_matrix <- cor(ted_numeric2)
+res <- cor.mtest(ted_numeric2, conf.level = .95)
+res
+#plot
+corrplot::corrplot(cor_matrix,method="shade",bg="white",
+                   p.mat = res$p,  sig.level = c(.001, .01, .05), pch.cex = .9, insig = "label_sig", pch.col = "white")
+#title="Correlation Matrix (by color) and significane (*)"
+```
+
+
+
+VISUAL: correlation matrix for ratings
+```{r}
+
+colnames(tedtalks)
+col_numeric2 =  c(16,20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33) # view, comments, duration, num_tags, published_date, languages)
+ted_numeric2 = tedtalks[,col_numeric2]
+
+sapply(ted_numeric2, is.numeric)
+
+
+
+
+cor_matrix <- cor(ted_numeric2)
+res <- cor.mtest(ted_numeric2, conf.level = .95)
+res
+#plot
+corrplot::corrplot(cor_matrix,method="shade",bg="white",
+                   p.mat = res$p,  sig.level = c(.001, .01, .05), pch.cex = .9, insig = "label_sig", pch.col = "white")
+#title="Correlation Matrix (by color) and significane (*)"
+```
+
+VISUAL: correlation matrix for ratings RICHARD
+```{r}
+
+colnames(teddfm)
+col_numeric2 =  c(17, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33) # view, comments, duration, num_tags, published_date, languages)
+ted_numeric2 = tedtalks[,col_numeric2]
+
+sapply(ted_numeric2, is.numeric)
+
+
+
+
+cor_matrix <- cor(ted_numeric2)
+res <- cor.mtest(ted_numeric2, conf.level = .95)
+res
+#plot
+corrplot::corrplot(cor_matrix,method="shade",bg="white",
+                   p.mat = res$p,  sig.level = c(.001, .01, .05), pch.cex = .9, insig = "label_sig", pch.col = "white")
+#title="Correlation Matrix (by color) and significane (*)"
+```
+
+New normalized correlation matrix
+```{r}
+
+colnames(Norm_TED)
+col_numeric3 =  c("popularity", "views", "comments", "duration", "languages", "num_tags", "positivecount", "negativecount")
+ted_numeric3 = Norm_TED[,col_numeric3]
+
+#make sure numeric
+sapply(ted_numeric3, is.numeric)
+
+Norm_TED$popularity <- as.numeric(Norm_TED$popularity)
+
+cor_matrix <- cor(ted_numeric3)
+res <- cor.mtest(ted_numeric3, conf.level = .95)
+res
+#plot
+corrplot::corrplot(cor_matrix,method="shade",bg="white",
+                   p.mat = res$p,  sig.level = c(.001, .01, .05), pch.cex = .9, insig = "label_sig", pch.col = "white")
+#title="Correlation Matrix (by color) and significane (*)"
+```
+
+New normalized ratings correlation matrix
+```{r}
+
+colnames(Norm_TED)
+col_numeric4 =  c("views", "funny", "beautiful", "confusing", "jawdropping", "informative", "ingenius", "obnoxious", "fascinating", "unconvincing", "courageous", "persuasive", "inspiring", "longwinded")
+ted_numeric4 = Norm_TED[,col_numeric4]
+
+#make sure numeric
+sapply(ted_numeric4, is.numeric)
+
+cor_matrix <- cor(ted_numeric4)
+res <- cor.mtest(ted_numeric4, conf.level = .95)
+res
+#plot
+corrplot::corrplot(cor_matrix,method="shade",bg="white",
+                   p.mat = res$p,  sig.level = c(.001, .01, .05), pch.cex = .9, insig = "label_sig", pch.col = "white")
+#title="Correlation Matrix (by color) and significane (*)"
+```
+
+
+correlation views and comments
+```{r}
+#corrplot::corrplot(cor_matrix,method="shade",bg="white",title="Correlation Matrix", 
+                   p.mat = res$p,  sig.level = c(.001, .01, .05), pch.cex = .9, insig = "label_sig", pch.col = "white")
+
+#################
+#correlation between views and comments
+cor(tedtalks$views, tedtalks$comments) #0.53
+?cor()
+plot(tedtalks$views, tedtalks$comments, ylim=c(0, 1000), xlim=c(0,1000000))
+
+cor(tedtalks$views, tedtalks$languages) #0.377
+
+
+#make numeric 
+tedtalksnum <- select_if(tedtalks, is.numeric)
+
+#Correlation for everything
+tedobject <- cor(tedtalksnum)
+
+#correlation betwen views and all columns
+teddf <- as_tibble(cor(tedtalksnum)) %>% cbind(colnames(.), .)
+teddf
+
+teddf <- cor(tedtalksnum) %>% rownames_to_column()
+
+which(colnames(teddf)=="views")
+
+str(tedobject)
+
+#cor(tedtalks,tedtalks$views)
+```
+
+
+add ted talks elite column classifier (1 if talk is high-rated AND popular)
+```{r}
+tedtalks <- tedtalks %>% mutate(elite=if_else(popularity==1 & highrated==1), 1,0)
+tedtalks$elite <- as.factor(tedtalks$elite)
+
+```

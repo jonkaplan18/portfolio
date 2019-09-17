@@ -1,0 +1,304 @@
+---
+#title: "UnderstandTheRawData"
+#author: "Richard Paterson"
+#date: "May 5, 2019"
+#course: IST 707 Data AnalyticsFinal Project"
+---
+
+## The objective of this code is to gain an understanding of the raw data
+
+
+```{r setup, include=TRUE}
+
+#install.packages("nnet")
+
+knitr::opts_chunk$set(echo = FALSE)
+## ONCE: install.packages("wordcloud")
+library(wordcloud)
+#install.packages('tm')
+library(tm)
+library(stringr)
+#install.packages("SnowballC")
+library(SnowballC)
+## ONCE: install.packages("slam")
+library(slam)
+library(cluster)
+#library(rsq, quietly=T)
+#library(plyr, quietly=T)
+library(dplyr, quietly=T)
+#library(sqldf, quietly=T)
+#library(ggplot2, quietly=T)
+#library(stats, quietly=T)
+#library(reshape2, quietly=T)
+library(RWeka, quietly=T)
+#install.packages("partykit") #once only
+#library(partykit)
+#using numerically converted attributes (sans churn column)
+#install.packages("factoextra")
+library(factoextra)
+#install.packages("stringr") # once only
+library(stringr)
+#library(stringi, quietly=T)
+#e1071 for svm
+#install.packages("e1071")
+#library(e1071)
+# for randomFOrest
+#library(randomForest)
+# https://www.rdocumentation.org/packages/kernlab/versions/0.9-27/topics/ksvm
+#library(kernlab, quietly=T) #ksvm
+library(RColorBrewer)
+```
+
+# IST 707 - Data Analytics Final Project
+
+
+```{r readindata}
+
+cat ('FP : Start')
+
+setwd('C:/Users/Richpat/Documents/@syracuse coursework/@IST 707 Data Analytics (R)/finalproject')
+
+#Read the data in
+
+InFile="./ted-talks/ted_main.csv"
+tedmain<-read.csv(InFile, sep=",", na.string=c(""))
+#write.csv()
+
+InFile="./ted-talks/transcripts.csv"
+
+```
+#
+
+```{r topNoccup, fig.width=10,fig.height=7}
+set.seed(420)
+numSPkrs=50
+tedmainnspkrs<-tedmain %>% count(speaker_occupation)
+colnames(tedmainnspkrs)<-c('Occupation', 'Count')
+tedmainnspkrs <- arrange(tedmainnspkrs, -Count) 
+tedmainnspkrs<-tedmainnspkrs[1:numSPkrs,]
+cat ("\nCount of Talks where Speaker Occupation is in Top 50 Occupations", sum(tedmainnspkrs$Count))
+coul = brewer.pal(8, "Spectral") # Classic palette BuPu, with 4 colors
+coul = colorRampPalette(coul)(numSPkrs) # I can add more tones to this palette 
+map.viewsxocc<-ggplot(tedmainnspkrs, aes(x=reorder(Occupation, -Count), y=Count, col=Occupation, fill=coul)) 
+#map.viewsxocc<-map.viewsxocc + scale_fill_brewer(coul)
+map.viewsxocc<-map.viewsxocc + geom_bar(stat='identity') 
+map.viewsxocc<-map.viewsxocc + ggtitle('Speaker Occupation') 
+map.viewsxocc<-map.viewsxocc + ggtitle('Count of Talks by Top ' + as.String(numSPkrs) +' Speaker Occupations') 
+map.viewsxocc<-map.viewsxocc + xlab('Occupation')
+map.viewsxocc<-map.viewsxocc + ylab('Count')
+map.viewsxocc<-map.viewsxocc + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+map.viewsxocc<-map.viewsxocc + theme(legend.position = "none")
+map.viewsxocc
+
+```
+```{r occupBox, fig.width=10,fig.height=6}
+set.seed(42)
+ind='Occ'
+tedmaintmp<-tedmain[!(is.na(tedmain$speaker_occupation)), ]
+tedmainnspkrs<-tedmaintmp %>% count(speaker_occupation)
+colnames(tedmainnspkrs)<-c('Occupation', 'Count')
+tedmainnspkrs<-tedmainnspkrs[(tedmainnspkrs$Count>1)&(tedmainnspkrs$Count<20),]
+tedmainnspkrs
+
+map.boxocc<-ggplot(tedmainnspkrs, aes(x = ind, y = Count))
+map.boxocc<-map.boxocc + geom_boxplot(width=.9)
+map.boxocc<-map.boxocc + ggtitle("Boxplot For Count of Occupations")
+map.boxocc<-map.boxocc + xlab("")
+map.boxocc<-map.boxocc + ylab("")
+map.boxocc
+
+```
+
+
+# order by view, graph top n
+
+```{r topnviews, fig.width=10,fig.height=7}
+# sort and then plot
+set.seed(42)
+howMany<-40
+tedmainnviews<-data.frame(tedmain$title, tedmain$views)
+colnames(tedmainnviews)<-c('title', 'views')
+tedmainnviews$title<-strtrim(tedmainnviews$title, howMany)
+tedmainnviews <- arrange(tedmainnviews, -views) 
+tedmainnviews<-tedmainnviews[1:howMany,]
+coul = brewer.pal(6, "Spectral") # Classic palette BuPu, with 4 colors
+coul = colorRampPalette(coul)(howMany) # I can add more tones to this palette 
+map.viewstopn<-ggplot(tedmainnviews, aes(x=reorder(title, -views), y=views, color=coul, fill=coul)) 
+map.viewstopn<-map.viewstopn + geom_bar(stat='identity') 
+map.viewstopn<-map.viewstopn + ggtitle('Top ' + as.String(howMany) +' talks by Number of Views') 
+map.viewstopn<-map.viewstopn + theme(axis.text.x=element_text(angle=60,hjust=1))
+map.viewstopn<-map.viewstopn + theme(legend.position = "none")
+map.viewstopn<-map.viewstopn + xlab("talks")
+
+map.viewstopn
+```
+```{r viewsBox, fig.width=3,fig.height=7}
+set.seed(42)
+ind='Views'
+tedmainviews<-tedmain[!(is.na(tedmain$views)), ]
+tedmainviews<-tedmainviews[(tedmainviews$views < 3000000),]
+#tedmainnspkrs<-tedmaintmp %>% count(speaker_occupation)
+#colnames(tedmainnspkrs)<-c('Occupation', 'Count')
+map.boxvw<-ggplot(tedmainviews, aes(x = ind, y = views))
+map.boxvw<-map.boxvw + geom_boxplot(width=.9)
+map.boxvw<-map.boxvw + ggtitle("Boxplot For Views (excluding 4 talks with over 3,000,000 views)")
+map.boxvw<-map.boxvw + xlab("")
+map.boxvw<-map.boxvw + ylab("")
+map.boxvw
+
+```
+
+```{r talkCntByFilmYYYY, fig.width=10,fig.height=6}
+
+tedmaintmp<-data.frame(tedmain$film_date)
+tedmaintmp$date<-as.Date(as.POSIXct(tedmain$film_date, origin="1970-01-01"))
+tedmaintmp$YYYY<-format(tedmaintmp$date, "%Y")
+
+set.seed(42)
+talkCntByFilmYYYY<-tedmaintmp %>% count(YYYY)
+colnames(talkCntByFilmYYYY)<-c('YYYY', 'Count')
+tedmainbydt <- arrange(talkCntByFilmYYYY, YYYY) 
+coul = brewer.pal(9, "BuPu") # Classic palette BuPu, with 4 colors
+coul = colorRampPalette(coul)(length(talkCntByFilmYYYY$YYYY)) # I can add more tones to this palette 
+map.talkCntByFilmYYYY<-ggplot(talkCntByFilmYYYY, aes(x=YYYY, y=Count, color=coul, fill=coul))
+map.talkCntByFilmYYYY<-map.talkCntByFilmYYYY + geom_bar(stat='identity') 
+map.talkCntByFilmYYYY<-map.talkCntByFilmYYYY + ggtitle('Count of Talks by Year Filmed') 
+map.talkCntByFilmYYYY<-map.talkCntByFilmYYYY + xlab('Year Filmed')
+map.talkCntByFilmYYYY<-map.talkCntByFilmYYYY + ylab('Count')
+map.talkCntByFilmYYYY<-map.talkCntByFilmYYYY + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+map.talkCntByFilmYYYY<-map.talkCntByFilmYYYY + theme(legend.position = "none")
+map.talkCntByFilmYYYY
+
+```
+
+
+```{r talkCntByPubYYYY, fig.width=10,fig.height=6}
+
+tedmaintmp<-data.frame(tedmain$published_date)
+tedmaintmp$date<-as.Date(as.POSIXct(tedmain$published_date, origin="1970-01-01"))
+tedmaintmp$YYYY<-format(tedmaintmp$date, "%Y")
+
+set.seed(42)
+talkCntByYYYY<-tedmaintmp %>% count(YYYY)
+colnames(talkCntByYYYY)<-c('YYYY', 'Count')
+tedmainbydt <- arrange(talkCntByYYYY, YYYY) 
+coul = brewer.pal(9, "BuPu") # Classic palette BuPu, with 4 colors
+coul = colorRampPalette(coul)(length(talkCntByYYYY$YYYY)) # I can add more tones to this palette 
+map.talkCntByYYYY<-ggplot(talkCntByYYYY, aes(x=YYYY, y=Count, color=coul, fill=coul))
+map.talkCntByYYYY<-map.talkCntByYYYY + geom_bar(stat='identity') 
+map.talkCntByYYYY<-map.talkCntByYYYY + ggtitle('Count of Talks by Year Published') 
+map.talkCntByYYYY<-map.talkCntByYYYY + xlab('Year Published')
+map.talkCntByYYYY<-map.talkCntByYYYY + ylab('Count')
+map.talkCntByYYYY<-map.talkCntByYYYY + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+map.talkCntByYYYY<-map.talkCntByYYYY + theme(legend.position = "none")
+map.talkCntByYYYY
+
+```
+```{r viewSumByYYYY, fig.width=10,fig.height=6}
+tedmaintmp<-data.frame(tedmain$published_date)
+tedmaintmp$date<-as.Date(as.POSIXct(tedmain$published_date, origin="1970-01-01"))
+tedmaintmp$YYYY<-format(tedmaintmp$date, "%Y")
+tedmaintmp$views<-tedmain$views
+tedmaintmp<-tedmaintmp[,-1:-2]
+
+set.seed(42)
+viewSumByYYYY <- tedmaintmp %>% group_by(YYYY) %>% summarize_all(sum)
+colnames(viewSumByYYYY)<-c('YYYY', 'Sum')
+viewSumByYYYY <- arrange(viewSumByYYYY, YYYY) 
+coul = brewer.pal(9, "BuPu") # Classic palette BuPu, with 4 colors
+coul = colorRampPalette(coul)(length(viewSumByYYYY$YYYY)) # I can add more tones to this palette 
+map.viewSumByYYYY<-ggplot(viewSumByYYYY, aes(x=YYYY, y=Sum, color=coul, fill=coul))
+map.viewSumByYYYY<-map.viewSumByYYYY + geom_bar(stat='identity') 
+map.viewSumByYYYY<-map.viewSumByYYYY + ggtitle('Sum of Views by Year Published') 
+map.viewSumByYYYY<-map.viewSumByYYYY + xlab('Year Published')
+map.viewSumByYYYY<-map.viewSumByYYYY + ylab('Sum')
+map.viewSumByYYYY<-map.viewSumByYYYY + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+map.viewSumByYYYY<-map.viewSumByYYYY + theme(legend.position = "none")
+map.viewSumByYYYY
+
+```
+
+https://rstudio-pubs-static.s3.amazonaws.com/337284_d19c9e639b22451aa3193396831d8a99.html (for ratings transformation)
+http://www.sthda.com/english/wiki/colors-in-r (colors)
+
+```{r viewAvgByYYYY, fig.width=10,fig.height=6}
+
+viewAvgByYYYY<-data.frame(talkCntByYYYY)
+viewAvgByYYYY$Sum<-viewSumByYYYY$Sum
+viewAvgByYYYY$Avg<- with(viewAvgByYYYY, Sum/Count)
+
+set.seed(42)
+#viewSumByYYYY <- arrange(viewSumByYYYY, YYYY) 
+coul = brewer.pal(9, "BuPu") # Classic palette BuPu, with 4 colors
+coul = colorRampPalette(coul)(length(viewAvgByYYYY$YYYY)) # I can add more tones to this palette 
+map.viewAvgByYYYY<-ggplot(viewAvgByYYYY, aes(x=YYYY, y=Avg, color=coul, fill=coul))
+map.viewAvgByYYYY<-map.viewAvgByYYYY + geom_bar(stat='identity') 
+map.viewAvgByYYYY<-map.viewAvgByYYYY + ggtitle('Avg Views per Talk by Year Published') 
+map.viewAvgByYYYY<-map.viewAvgByYYYY + xlab('Year Published')
+map.viewAvgByYYYY<-map.viewAvgByYYYY + ylab('Avg Views [er Talk')
+map.viewAvgByYYYY<-map.viewAvgByYYYY + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+map.viewAvgByYYYY<-map.viewAvgByYYYY + theme(legend.position = "none")
+map.viewAvgByYYYY
+
+```
+```{r all3byYYYY, fig.width=10,fig.height=9}
+library(gridExtra)
+grid.arrange(map.talkCntByYYYY, map.viewSumByYYYY, map.viewAvgByYYYY,ncol=1)
+```
+
+
+```{r commentsBox, fig.width=10,fig.height=6}
+set.seed(42)
+ind='Comments'
+summary(tedmain$comments)
+map.boxocc<-ggplot(tedmain, aes(x = ind, y = comments))
+map.boxocc<-map.boxocc + geom_boxplot(width=.9)
+map.boxocc<-map.boxocc + ggtitle("Boxplot For Comments")
+map.boxocc<-map.boxocc + xlab("")
+map.boxocc<-map.boxocc + ylab("Comments")
+map.boxocc
+
+```
+
+```{r countBYlanguage, fig.width=10,fig.height=6}
+
+set.seed(42)
+tedmainbylang<-tedmain %>% count(languages)
+colnames(tedmainbylang)<-c('lang', 'Count')
+tedmainbylang$lang<-as.factor(tedmainbylang$lang)
+tedmainbylang <- arrange(tedmainbylang, -Count) 
+#tedmainnspkrs<-tedmainnspkrs[1:40,]
+map.talksbylang<-ggplot(tedmainbylang, aes(x=reorder(lang, -Count), y=Count, color=rainbow(1), fill=rainbow(1)))
+map.talksbylang<-map.talksbylang + geom_bar(stat='identity') 
+map.talksbylang<-map.talksbylang + ggtitle('Count of Talks by Language') 
+map.talksbylang<-map.talksbylang + xlab('Language')
+map.talksbylang<-map.talksbylang + ylab('Count')
+map.talksbylang<-map.talksbylang + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+map.talksbylang<-map.talksbylang + theme(legend.position = "none")
+map.talksbylang
+
+
+
+```
+
+```{r all3bCnt, fig.width=10,fig.height=9}
+library(gridExtra)
+grid.arrange(map.viewsxocc, map.talksbylang,ncol=1)
+```
+
+
+```{r initiallook, fig.width=10,fig.height=6}
+par(mfrow = c(1,5))
+hist(tedmain$num_speaker, main = "Number of speakers")
+boxplot(tedmain$languages, main = "Number of languages")
+boxplot(tedmain$duration,main = "Duration (in secs)")
+boxplot(tedmain$comments,main = "Comments")
+boxplot(tedmain$views,main = "Views")
+#map.boxocc<-ggplot(tedmain, aes(x = ind, y = comments))
+
+```
+
+
+
+
+# END

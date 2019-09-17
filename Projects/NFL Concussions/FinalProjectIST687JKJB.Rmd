@@ -1,0 +1,853 @@
+---
+title: "IST687 Project"
+author: 
+- "Jon Kaplan" 
+- "Jeffrey Bertucci"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: word_document
+---
+
+
+```{r, echo=TRUE, message=FALSE}
+
+library(tidyverse)
+library(lubridate)
+library(plotly)
+library(kernlab)
+library(randomForest)
+
+
+
+```
+
+
+Importing the Data:
+```{r}
+
+#LOADING IN THE DATA:
+
+#1) all the GAME data
+OutdoorStadium <- c("Open", "Outdoor", "Outdoors", "Outside", "Retr. Roof - Open", "outdoor", "Oudoor","Ourdoor", "Outddors", "Outdor", "outdoor", "Outdor")
+
+IndoorStadium <- c("Dome", "Indoors", "Retr. Roof - Closed", "Indoor", "Closed Dome", "Dome, closed", "Domed, closed", "Indoor, non-retractable roof", "Indoors Domed")
+
+
+gamedata <- read_csv("IST687 Final Project/game_data.csv") 
+gamedata <- gamedata %>% 
+   mutate(StadiumType2=case_when(StadiumType %in% OutdoorStadium~"Outdoor",
+                                StadiumType %in% IndoorStadium~"Indoor",
+                                TRUE~"Unknown")) 
+
+
+
+#2) CONCUSSION data
+videoreview <- read_csv("IST687 Final Project/video_review.csv")
+videoreview <- videoreview %>% 
+  mutate(Concussion= 1) #add concussion field with 1 value
+
+
+
+#videoreview$Concussion <- as.numeric(videoreview$Concussion)
+
+#3) PLAY level data (score and play description), converted game clock to minutes and seconds since was hms format before
+playinformation <- read_csv("IST687 Final Project/play_information.csv", col_types=cols(Game_Date=col_skip(), Game_Clock=col_time(format = "%M:%S")))
+
+#4) read in all player roles in punt plays
+playplayerrole <- read_csv("IST687 Final Project/play_player_role_data.csv") 
+
+#read in just punters and punt returners
+playplayerrolepunts <- read_csv("IST687 Final Project/play_player_role_data.csv")   %>% 
+  dplyr::filter(Role=="P" | Role=="PR")
+
+
+
+
+#JOINING the data into one master file
+puntmaster <- gamedata %>% inner_join(playinformation, by=c("GameKey", "Season_Year", "Season_Type", "Week")) %>%
+  inner_join(playplayerrole, by=c("GameKey", "Season_Year", "PlayID")) %>% 
+  left_join(videoreview) %>% 
+  mutate(Quarter=as.factor(Quarter)) %>% 
+  mutate(Concussion=if_else(is.na(Concussion), 0, 1))
+
+
+#combining gamedata and videoreview for more game day information about concussion games
+
+
+gamevideo <- inner_join(gamedata, videoreview) %>% 
+  select(-Game_Date) 
+
+
+
+```
+
+```{r}
+
+#OPTIONAL STUFF/notes from importing
+
+#%>% 
+  #mutate(FullGameClock=((Quarter-1)*15+Game_Clock))
+
+#sums the total concussions in concussions column of puntmaster
+#sum(puntmaster$Concussion, na.rm = TRUE)
+
+
+#taking NA in concussions field and replacing with 0
+
+#puntmaster[is.na(puntmaster$Concussion),] <- 0
+#puntmaster %>% filter(is.na(Concussion))
+
+
+#OPTIONAL STUFF:
+
+
+#trying to figure out how to make gameclock for full 60 minutes intead of just quarters
+#playgamevideo <- left_join(playinformation, gamevideo) %>% 
+  #mutate(FullGameClock=hms((Quarter-1)*15+Game_Clock))
+
+
+
+
+```
+
+Importing the NGS Data:
+
+#importing data
+
+#since NGS data is so massive, tried to create a way to import and also remove previous dataset that is imported
+
+#2016 import
+NGS2016Post <- read_csv("NGS-2016-post.csv", col_types = cols(Event=col_character())) 
+
+  
+NGS2016Pre <- read_csv("NGS-2016-pre.csv", col_types = cols(Event=col_character()))
+
+NGSData <- dplyr::union(NGS2016Post, NGS2016Pre)
+rm(NGS2016Post, NGS2016Pre)
+  
+NGS2016RegPart1 <- read_csv("NGS-2016-reg-wk1-6.csv", col_types = cols(Event=col_character()))
+
+NGSData <- dplyr::union(NGSData, NGS2016RegPart1)
+rm(NGS2016RegPart1)
+
+NGS2016RegPart2 <- read_csv("NGS-2016-reg-wk7-12.csv", col_types = cols(Event=col_character()))
+
+NGSData <- dplyr::union(NGSData, NGS2016RegPart2)
+rm(NGS2016RegPart2)
+
+NGS2016RegPart3 <- read_csv("NGS-2016-reg-wk13-17.csv", col_types = cols(Event=col_character()))
+
+NGSData <- dplyr::union(NGSData, NGS2016RegPart3)
+rm(NGS2016RegPart3)
+
+#2017 import
+NGS2017Post <- read_csv("NGS-2017-post.csv", col_types = cols(Event=col_character()))
+
+NGSData <- dplyr::union(NGSData, NGS2017Post)
+rm(NGS2017Post)
+
+NGS2017Pre <- read_csv("NGS-2017-pre.csv", col_types = cols(Event=col_character()))
+
+NGSData <- dplyr::union(NGSData, NGS2017Pre)
+rm(NGS2017Pre)
+
+NGS2017Part1 <- read_csv("NGS-2017-reg-wk1-6.csv", col_types = cols(Event=col_character()))
+
+NGSData <- dplyr::union(NGSData, NGS2017Part1)
+rm(NGS2017Part1)
+
+NGS2017Part2 <- read_csv("NGS-2017-reg-wk7-12.csv", col_types = cols(Event=col_character()))
+
+NGSData <- dplyr::union(NGSData, NGS2017Part2)
+rm(NGS2017Part2)
+
+NGS2017Part3 <- read_csv("NGS-2017-reg-wk13-17.csv", col_types = cols(Event=col_character()))
+
+NGSData <- dplyr::union(NGSData, NGS2017Part3)
+rm(NGS2017Part3)
+
+
+
+#join player roles with NGS data
+NGSPlayerRole <- inner_join(NGS2016Post, playplayerrole) 
+
+#join player roles with NGS data, only Punt and Punt Returner roles
+NGSPlayerRolePRP <- inner_join(NGSData, playplayerrolepunts) 
+
+
+
+#used union function 
+#NGSPlayerRole <- inner_join(playplayerrole, NGS2016Post) %>% 
+ # union(inner_join(playplayerrole, NGS2016Pre))
+
+#NGSPlayerRole <- inner_join(playplayerrole, NGS2016Post) %>% 
+ # dplyr::union(inner_join(playplayerrole, NGS2016Pre))%>% 
+  #dplyr::union(inner_join(playplayerrole, NGS2016RegPart1))%>% 
+  #dplyr::union(inner_join(playplayerrole, NGS2016RegPart2))%>% 
+  #dplyr::union(inner_join(playplayerrole, NGS2016RegPart3))%>% 
+  #dplyr::union(inner_join(playplayerrole, NGS2017Post))%>% 
+  #dplyr::union(inner_join(playplayerrole, NGS2017Pre))%>% 
+  #dplyr::union(inner_join(playplayerrole, NGS2017Part1))%>% 
+  #dplyr::union(inner_join(playplayerrole, NGS2017Part2))%>% 
+  #dplyr::union(inner_join(playplayerrole, NGS2017Part3))
+
+#66,492,490 observations in NGS data
+
+
+#OPTIONAL STUFF:
+
+#remove all unnecessary data after joined
+#rm(NGS2016Pre, NGS2016Post, NGS2016RegPart1, NGS2016RegPart2, NGS2016RegPart3, NGS2017Post, NGS2017Pre, NGS2017Part1, NGS2017Part2, NGS2017Part3)
+   
+
+#joining concussion occurences from gamevideo and adding velocities and speed data from NGSPlayerRole
+#ConcussionNGS <- inner_join(gamevideo, NGSPlayerRolePRP)
+
+            
+
+#events
+#ConcussionNGS[!is.na(ConcussionNGS$Event),]
+  
+ 
+
+
+
+
+
+
+Average Temperature for Concussions
+```{r}
+averagetempconcussions <- mean(gamevideo$Temperature)
+averagetempconcussions
+
+#60.73 degrees
+
+```
+
+Season Type Count
+```{r}
+#analysis of where concussions occurred during season
+seasontype <- gamevideo$SeasonType
+gamevideo %>% group_by(Season_Type) %>% count()
+
+
+
+
+```
+
+Stadium type count
+```{r}
+#analysis of outdoor vs indoor stadiums
+
+
+  
+stadiumtypecounts <- gamedata %>% group_by(StadiumType) %>% count() %>% arrange(desc(n))
+view(stadiumtypecounts)
+
+stadiumcount <- gamedata %>% group_by(StadiumType2) %>% count()
+
+```
+
+Turf count
+```{r}
+
+#figuring out the different turfs of fields
+
+turfcount <- gamevideo %>% group_by(Turf) %>% count()
+turfcount
+
+turfcount2 <- gamedata %>% group_by(Turf) %>% count()
+turfcount2
+
+
+
+
+```
+
+Types of Impacts for Concussions:
+```{r}
+
+# histogram of types of concussion impacts
+ggplot(videoreview, aes(x=Player_Activity_Derived, fill = Primary_Impact_Type))+
+  geom_bar(stat = 'Count')+
+  ggtitle("Contact Types Resulting in Concussion")+
+  xlab(NULL)
+
+videoreview %>% group_by(Primary_Impact_Type) %>% count()
+       
+```
+
+Punts per Team
+```{r}
+
+#looking at amount of punts by team to get general overview
+
+# punts per team, orientation changed
+
+playinformationsummary <- playinformation %>% 
+  group_by(Poss_Team) %>% 
+  summarize(NumPunts=n())
+
+#can change color to fill if want different color
+ggplot(playinformationsummary, aes(x=reorder(Poss_Team, NumPunts), y=NumPunts, color=Poss_Team))+
+  geom_col(width=.7)+coord_flip()+
+  ggtitle("Number of Punts per Team")+
+  xlab("Teams")+
+  ylab("Count")+
+  theme(legend.position="none")
+
+#37/6681
+#0.55% chance of a concussion on each punt 
+```
+
+
+
+
+Player Roles and Concussion
+```{r}
+
+#finding out what player role types most affected by punt concussions
+
+concussedroles <- puntmaster %>% 
+  filter(Concussion == 1) %>% 
+  group_by(Role) %>% 
+  summarize(NumConcussions=n())
+
+
+ggplot(concussedroles, aes(x=reorder(Role, -NumConcussions), y=NumConcussions, color=Role))+
+  geom_col(width=.7)+
+  ggtitle("Number of Concussions by Player Role")+
+  xlab("Role")+
+  ylab("Count")+
+  theme(legend.position="none")
+
+
+```
+
+Distance between Punt and Punt Returner
+
+
+#using the NGS data to find out what distance is between Punt and punt returner on punt plays, seeing if distance is a factor in punt concussions
+
+#use NGSData with filter for only P and PR roles
+
+#find way to figure out which field to filter by, decide on "punt"
+unique(NGSPlayerRolePRP$Event)
+
+#rename x and y for P and PR specific
+ngspunt <- NGSPlayerRolePRP %>% filter(Event=="punt", Role=="P") %>% 
+  rename(XP=x, YP=y)
+
+ngspr <- NGSPlayerRolePRP %>% filter(Event=="punt", Role=="PR") %>% 
+  rename(XPR=x, YPR=y)
+
+#use distance formula to calculate using X and Y
+prpdist <- inner_join(ngspunt, ngspr, by=c("GameKey", "Season_Year", "Time", "PlayID")) %>% 
+  mutate(Distance=sqrt((XP-XPR)^2+(YP-YPR)^2))
+
+#new data with concussions joined
+prpdistconc <- inner_join(prpdist, videoreview, by=c("GameKey", "PlayID", "Season_Year"))
+
+#linear regression
+#glm()
+
+#distmodel <- glm(Concussion~Distance, data=prpdistconc, family=binomial())
+#summary(distmodel)
+
+range(prpdist$Distance)
+#24.15795 - 74.91791
+
+range(prpdistconc$Distance)
+#41.44668 - 69.59000
+
+mean(prpdistconc$Distance)
+#57.50733
+
+mean(prpdist$Distance)
+#56.62935
+
+mean(gamedata$Temperature)
+
+
+#boxplot
+ggplot(prpdistconc, aes(x=Concussion, y=Distance)) + geom_boxplot()
+
+
+puntmasterdistance <- inner_join(puntmaster, prpdist)
+
+#boxplot
+ggplot(puntmasterdistance, aes(x=Concussion==1, y=Distance)) + geom_boxplot()
+
+
+
+
+Regression Comparing Game_Day, Temperature, Turf, and Quarter
+```{r}
+#glm()
+#?glm()
+
+model1 <- glm(Concussion~Temperature+Game_Day+Turf, data=puntmaster, family=binomial())
+summary(model1)
+
+model2 <- glm(Concussion~Temperature, data=puntmaster, family=binomial())
+summary(model2)
+
+model3 <- glm(Concussion~Game_Day, data=puntmaster, family=binomial())
+summary(model3)
+
+model4 <- glm(Concussion~Turf, data=puntmaster, family=binomial())
+summary(model4)
+
+#(intercept) is quarter 1 in summary because converted to factors
+model5 <- glm(Concussion~Quarter, data=puntmaster, family=binomial())
+summary(model5)
+#Quarter 3 is significant, 0.0428
+
+
+
+```
+
+Animated plot
+
+
+#decided to create an animated plot for player positions during concussion plays
+
+#used tidyverse, plotly, lubridate packages
+
+#create vectors for receiving and punting coverage, 4 variables for plot
+rec <- c("PDR1", "PDR2", "PDR3", "PDL3", "PDL2", "PDL1", "PLR", "PLM", "PLL", "VL", "VRi", "VRo", "PFB")
+
+punt <- c("GL", "PLW", "PLT", "PLG", "PLS", "PRG", "PRT", "PRW", "GR", "PC", "PPR", "PPL")
+
+p <- c("P")
+
+pr <- c("PR")
+
+
+#EXAMPLE 1
+#going to animate an instance of PR being concussed, helmet to helmet impact
+
+
+playplayerrolepunter <- read_csv("IST687 Final Project/play_player_role_data.csv")   %>% 
+  dplyr::filter(Role=="PR") #filter just PR
+
+justpunter <- inner_join(gamevideo, playplayerrolepunter) #join concussion data with just PR
+
+gamevideoroles <- inner_join(gamevideo, playplayerrole) #get all roles
+
+#load data
+NGS2016RegPart2 <- read_csv("NGS-2016-reg-wk7-12.csv", col_types = cols(Event=col_character()))
+
+input <- readr::read_csv("NGS-2016-reg-wk7-12.csv", col_types = cols(Event=col_character())) %>% 
+  dplyr::filter(PlayID==3509) 
+
+input2 <- inner_join(input, playplayerrole) %>% 
+  mutate(Side=case_when(Role %in% rec~"Punt Return",
+                                           Role %in% punt~"Punt Coverage",
+                                           Role == p~"Punter",
+                                           Role == pr~"Punt Returner")) %>% 
+  mutate(display_time=as.numeric(Time-min(Time)))
+
+# build the plot
+p <- ggplot2::ggplot(input2, ggplot2::aes(x = x, 
+                                         y = y, 
+                                         color = Side,
+                                         ids = GSISID,
+                                         frame = display_time)) +
+  ggplot2::geom_point(size = 3, alpha = .6) +
+  ggplot2::geom_text(ggplot2::aes(label = Role), size = 1.5, color = 'black') +
+  ggplot2::theme_minimal() +
+  ggplot2::theme(legend.position = "none")
+
+# display the plot
+p
+
+# convert the ggplot into a plotly
+animated_p <- plotly::ggplotly(p) %>%
+  plotly::animation_opts(frame = 100)
+
+# execute
+animated_p
+
+
+#EXAMPLE2
+
+#helmet to body impact concussion on position PLW
+
+input3 <- readr::read_csv("NGS-2016-pre.csv", col_types = cols(Event=col_character())) %>% 
+  dplyr::filter(PlayID==3129) 
+
+input4 <- inner_join(input, playplayerrole) %>% 
+  mutate(Side=case_when(Role %in% rec~"Punt Return",
+                                           Role %in% punt~"Punt Coverage",
+                                           Role == p~"Punter",
+                                           Role == pr~"Punt Returner")) %>% 
+  mutate(display_time=as.numeric(Time-min(Time)))
+
+
+
+#finds all unique values for punt return and punt coverage
+#unique(input2[input2$Side=="Punt Return",]$Role)
+#unique(input2[input2$Side=="Punt Coverage",]$Role)
+
+
+
+  
+# build the plot
+p2 <- ggplot2::ggplot(input4, ggplot2::aes(x = x, 
+                                         y = y, 
+                                         color = Side,
+                                         ids = GSISID,
+                                         frame = display_time)) +
+  ggplot2::geom_point(size = 3, alpha = .6) +
+  ggplot2::geom_text(ggplot2::aes(label = Role), size = 1.5, color = 'black') +
+  ggplot2::theme_minimal() +
+  ggplot2::theme(legend.position = "none")
+
+# display the plot
+p2
+
+# convert the ggplot into a plotly
+animated_p2 <- plotly::ggplotly(p) %>%
+  plotly::animation_opts(frame = 100)
+
+# execute
+animated_p2
+
+#found this idea from here:
+#http://jimkloet.com/animated_nfl_play.html
+
+
+
+
+
+
+Machine learning
+
+
+#used kernlab and randomForest
+
+
+puntmaster <- gamedata %>% inner_join(playinformation, by=c("GameKey", "Season_Year", "Season_Type", "Week")) %>%
+  inner_join(playplayerrole, by=c("GameKey", "Season_Year", "PlayID")) %>% 
+  left_join(videoreview) %>% 
+  mutate(Quarter=as.factor(Quarter)) %>% 
+  mutate(Concussion=if_else(is.na(Concussion), 0, 1))
+
+puntmaster2<-puntmaster
+
+rem<-c(1,2, 5, 7, 9:14, 18, 20, 21, 23, 25:27, 29, 30, 32:37)
+
+right = function (string, char){
+  substr(string,nchar(string)-(char-1),nchar(string))
+}
+
+left = function (string,char){
+  substr(string,1,char)
+}
+puntmaster2$Score_Home_Visiting<-as.character(puntmaster2$Score_Home_Visiting)
+#puntmaster2<-puntmaster2[, -rem]
+
+puntmaster2$Score_visiting<-as.numeric(right(puntmaster2$Score_Home_Visiting, 2))
+puntmaster2$Score_Home<-as.numeric(left(puntmaster2$Score_Home_Visiting, 2))
+
+puntmaster2$Score_difference<-puntmaster2$Score_Home-puntmaster2$Score_visiting
+
+rem2<-c(11,14,15)
+
+puntmaster2<-puntmaster2[, -rem2]
+
+puntmaster3<-puntmaster2
+
+blanks<-which(puntmaster3$GameWeather=="")
+puntmaster3$GameWeather<-as.character(puntmaster3$GameWeather)
+puntmaster3$GameWeather[blanks]<-gsub("", "Normal", puntmaster3$GameWeather[blanks])
+
+
+#Assuming that if no note was made regarding weather, we will describe no note as "normal conditions"
+#a different description than "sunny" conditions.
+
+Chance<-c("30% Chance of Rain", "Chance of Showers", 
+          "Cloudy with Possible Stray Showers/Thundershowers",
+          "Cloudy, chance of rain", "Cloudy, Humid, Chance of Rain", 
+          "Partly Cloudy, Chance of Rain 80%", "Rain likely, temps in low 40s.")
+
+puntmaster3$GameWeather<-gsub("30% Chance of Rain", "Chance of Rain", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Chance of Showers", "Chance of Rain", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Cloudy with Possible Stray Showers/Thundershowers", "Chance of Rain", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Cloudy, chance of rain", "Chance of Rain", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Cloudy, Humid, Chance of Rain", "Chance of Rain", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Partly Cloudy, Chance of Rain 80%", "Chance of Rain", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Rain likely, temps in low 40s.", "Chance of Rain", puntmaster3$GameWeather)
+
+Rain<-c("Cloudy with periods of rain, thunder possible. Winds shifting to WNW, 10-20 mph.",
+        "Cloudy with rain", "Cloudy, Rain", "Light Rain", "Rain", "Showers")
+
+puntmaster3$GameWeather<-gsub("Cloudy with periods of rain, thunder possible. Winds shifting to WNW, 10-20 mph.", "Rain", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Cloudy with rain", "Rain", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Cloudy, Rain", "Rain", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Light Rain", "Rain", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Rain", "Rain", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Showers", "Rain", puntmaster3$GameWeather)
+
+#For cloud coverage, basically if it is the only thing of note.
+Cloudy<-c("cloudy", "Cloudy", "Cloudy and cold", "Cloudy and Cold", 
+          "Cloudy, steady temps", "Coudy", "Mostly cloudy", "Mostly Cloudy",
+          "Mostly CLoudy", "Mostly Coudy")
+
+puntmaster3$GameWeather<-gsub("cloudy", "Cloudy", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Cloudy", "Cloudy", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Cloudy and cold", "Cloudy", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Cloudy and Cold", "Cloudy", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Cloudy, steady temps", "Cloudy", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Mostly cloudy", "Cloudy", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Mostly Cloudy", "Cloudy", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Mostly CLoudy", "Cloudy", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Mostly Coudy", "Cloudy", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Coudy", "Cloudy", puntmaster3$GameWeather)
+
+Thunder<-c("T-Storms", "Scattered thunderstorms")
+
+puntmaster3$GameWeather<-gsub("T-Storms", "Thunder Storms", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Scattered thunderstorms", "Thunder Storms", puntmaster3$GameWeather)
+
+#distinguishing clear/normal from sunny, mentality->clear means peak football conditions all around
+Sunny<-c("Suny", "Sunny, highs to upper 80s", "Sunny Skies", "Sunny Intervals", 
+         "Sunny intervals", "Sunny and warm", "Sunny and cool", "Sunny and Clear", 
+         "Sunny", "Sun & clouds", "Sunny", "Party Cloudy", "Partly Sunny", "Partly sunny",
+         "Partly Cloudy, lows to upper 50s.", "Partly CLoudy", "Partly Cloudy", "Mostly Sunny")
+
+puntmaster3$GameWeather<-gsub("Suny", "Sunny", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Sunny, highs to upper 80s", "Sunny", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Sunny Skies", "Sunny", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Sunny Intervals", "Sunny", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Sunny intervals", "Sunny", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Sunny and warm", "Sunny", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Sunny and cool", "Sunny", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Sunny and Clear", "Sunny", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Sun & clouds", "Sunny", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Sunny", "Sunny", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Party Cloudy", "Sunny", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Partly Sunny", "Sunny", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Partly sunny", "Sunny", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Partly Cloudy, lows to upper 50s.", "Sunny", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Partly CLoudy", "Sunny", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Partly Cloudy", "Sunny", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Mostly Sunny", "Sunny", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Sunny", "Sunny", puntmaster3$GameWeather)
+
+Snow<-c("Snow showers", "Snow", "Heavy lake effect snow", "Snow Rain, 3 to 5 inches expected.", 
+        "Cloudy, light snow accumulating 1-3", "Snow")
+
+puntmaster3$GameWeather<-gsub("Snow", "Snow", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Snow showers", "Snow", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Heavy lake effect snow", "Snow", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Snow Rain, 3 to 5 inches expected.", "Snow", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub('Cloudy, light snow accumulating 1-3"', "Snow", puntmaster3$GameWeather)
+
+
+fog<-c("Cloudy, fog started developing in 2nd quarter", "Cloudy with patches of fog")
+
+puntmaster3$GameWeather<-gsub("Cloudy, fog started developing in 2nd quarter", "Foggy", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Cloudy with patches of fog", "Foggy", puntmaster3$GameWeather)
+
+#Clear is a catch-all at the end, essentially meaning "no weather to report". Thats good football.
+Clear<-c("Clear", "CLEAR", "Clear and Cold", "Clear and cool", "Clear and warm", 
+         "Clear skies", "Clear Skies", "Cold", "Fair", "Mostly Clear. Gusting ot 14.", 
+         "Normal")
+
+puntmaster3$GameWeather<-gsub("Clear", "Clear", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("CLEAR", "Clear", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Clear and Cold", "Clear", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Clear and cool", "Clear", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Clear and warm", "Clear", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Clear skies", "Clear", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Clear Skies", "Clear", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Cold", "Clear", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Fair", "Clear", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Mostly Clear. Gusting ot 14.", "Clear", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Normal", "Clear", puntmaster3$GameWeather)
+
+Hazy<-c("Hazy, hot and humid", "Hazy")
+
+puntmaster3$GameWeather<-gsub("Hazy, hot and humid", "Hazy", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Hazy", "Hazy", puntmaster3$GameWeather)
+
+puntmaster3$GameWeather<-gsub("Indoor", "Indoors", puntmaster3$GameWeather)
+puntmaster3$GameWeather<-gsub("Indoorss", "Indoors", puntmaster3$GameWeather)
+
+
+puntmaster3$GameWeather<-as.factor(puntmaster3$GameWeather)
+
+
+puntmaster3$Week<-as.factor(puntmaster3$Week)
+
+#Similar to Weather, Turf needs to be normalized
+
+blanks2<-which(puntmaster3$Turf=="")
+puntmaster3$Turf<-as.character(puntmaster3$Turf)
+puntmaster3$Turf[blanks2]<-gsub("", "Natural Grass", puntmaster3$Turf[blanks2])
+
+Astroturf<-c("A-Turf Titan", "Artifical", "Artificial", "AstroTurf GameDay Grass 3D", 
+             "DD GrassMaster", "Synthetic", "UBU Speed Series-S5-M", "UBU Speed Series S5-M", 
+             "UBU Sports Speed S5-M", "Field turf", "Field Turf", "FieldTurf", "FieldTurf360",
+             "Synthetic 360", "Synthetic360")
+
+puntmaster3$Turf<-gsub("A-Turf Titan", "Synthetic", puntmaster3$Turf)
+puntmaster3$Turf<-gsub("Artifical", "Synthetic", puntmaster3$Turf)
+puntmaster3$Turf<-gsub("Artificial", "Synthetic", puntmaster3$Turf)
+puntmaster3$Turf<-gsub("AstroTurf GameDay Grass 3D", "Synthetic", puntmaster3$Turf)
+puntmaster3$Turf<-gsub("DD GrassMaster", "Synthetic", puntmaster3$Turf)
+puntmaster3$Turf<-gsub("Synthetic", "Synthetic", puntmaster3$Turf)
+puntmaster3$Turf<-gsub("UBU Speed Series-S5-M", "Synthetic", puntmaster3$Turf)
+puntmaster3$Turf<-gsub("UBU Speed Series S5-M", "Synthetic", puntmaster3$Turf)
+puntmaster3$Turf<-gsub("UBU Sports Speed S5-M", "Synthetic", puntmaster3$Turf)
+puntmaster3$Turf<-gsub("Field turf", "Synthetic", puntmaster3$Turf)
+puntmaster3$Turf<-gsub("Field Turf", "Synthetic", puntmaster3$Turf)
+puntmaster3$Turf<-gsub("FieldTurf", "Synthetic", puntmaster3$Turf)
+puntmaster3$Turf<-gsub("FieldTurf360", "Synthetic", puntmaster3$Turf)
+puntmaster3$Turf<-gsub("Synthetic 360", "Synthetic", puntmaster3$Turf)
+puntmaster3$Turf<-gsub("Synthetic360", "Synthetic", puntmaster3$Turf)
+
+Natural<-c("grass", "Grass", "Natrual Grass", "Natural", "Natural grass", "Natural Grass",
+           "Natural Grass ", "Naturall Grass", "Natrual Natural", "Natural Natural", 
+           "Natural Natural", "Naturall Natural", "Natural ")
+
+puntmaster3$Turf<-gsub("grass", "Natural", puntmaster3$Turf)
+puntmaster3$Turf<-gsub("Grass", "Natural", puntmaster3$Turf)
+puntmaster3$Turf<-gsub("Natrual Grass", "Natural", puntmaster3$Turf)
+puntmaster3$Turf<-gsub("Natural", "Natural", puntmaster3$Turf)
+puntmaster3$Turf<-gsub("Natural grass", "Natural", puntmaster3$Turf)
+puntmaster3$Turf<-gsub("Natural Grass", "Natural", puntmaster3$Turf)
+puntmaster3$Turf<-gsub("Natural Grass ", "Natural", puntmaster3$Turf)
+puntmaster3$Turf<-gsub("Naturall Grass", "Natural", puntmaster3$Turf)
+
+puntmaster3$Turf<-gsub("Natrual Natural", "Natural", puntmaster3$Turf)
+puntmaster3$Turf<-gsub("Natural Natural", "Natural", puntmaster3$Turf)
+puntmaster3$Turf<-gsub("Natural Natural", "Natural", puntmaster3$Turf)
+puntmaster3$Turf<-gsub("Naturall Natural", "Natural", puntmaster3$Turf)
+puntmaster3$Turf<-gsub("Natural ", "Natural", puntmaster3$Turf)
+
+
+puntmaster3$Turf<-as.factor(puntmaster3$Turf)
+summary(puntmaster3$Turf)
+
+puntmaster3$Temperature<-as.numeric(puntmaster3$Temperature)
+
+puntmaster3$StadiumType2<-as.factor(puntmaster3$StadiumType2)
+
+puntmaster3$Score_difference<-as.factor(puntmaster3$Score_difference)
+
+puntmaster3$Concussion<-as.factor(puntmaster3$Concussion)
+
+puntmaster3$Start_Time<-as.numeric(puntmaster3$Start_Time)
+
+#regulating all indoor weather and temperature to account for weird readings, averaging at 70 degrees
+puntmaster3$GameWeather[which(puntmaster3$StadiumType2=="Indoor")] <-"Indoor"
+puntmaster3$Temperature[which(puntmaster3$StadiumType2=="Indoor")] <-"70"
+
+puntmaster4<-puntmaster3
+
+#removing NAs, these are mostly temperature, none of the NAs had concussions
+
+puntmasterna<-complete.cases(puntmaster4)
+
+puntmaster4<-puntmaster4[puntmasterna,]
+
+puntmaster4$Score_difference<-as.numeric(puntmaster4$Score_difference)
+
+puntmaster4$Week<-as.numeric(puntmaster4$Week)
+
+puntmaster4$Quarter<-as.numeric(puntmaster4$Quarter)
+
+puntmaster4$Role<-as.character(puntmaster4$Role)
+
+puntmaster4$Role<-as.factor(puntmaster4$Role)
+
+puntmaster4$Turf<-gsub("Natural", 1, puntmaster4$Turf)
+puntmaster4$Turf<-gsub("Synthetic", 0, puntmaster4$Turf)
+
+puntmaster4$NaturalTurf<-puntmaster4$Turf
+
+puntmaster4<-puntmaster4[,-4]
+
+puntmaster4$NaturalTurf<-as.numeric(puntmaster4$NaturalTurf)
+
+#times are very difficult to parse, removing them
+puntmaster4<-puntmaster4[,-c(4, 9)]
+
+#categorizing weather conditions into 3 groups 1, 2, 3: Optimal, Suboptimal, Bad
+summary(puntmaster4$GameWeather)
+
+Optimal<-c("Clear", "Cloudy", "Indoors", "Sunny")
+
+puntmaster4$GameWeather<-gsub("Clear", 1, puntmaster4$GameWeather)
+puntmaster4$GameWeather<-gsub("Cloudy", 1, puntmaster4$GameWeather)
+puntmaster4$GameWeather<-gsub("Indoors", 1, puntmaster4$GameWeather)
+puntmaster4$GameWeather<-gsub("Sunny", 1, puntmaster4$GameWeather)
+
+SubOptimal<-c("Chance of Rain", "Hazy", "Foggy")
+
+puntmaster4$GameWeather<-gsub("Chance of Rain", 2, puntmaster4$GameWeather)
+puntmaster4$GameWeather<-gsub("Hazy", 2, puntmaster4$GameWeather)
+puntmaster4$GameWeather<-gsub("Foggy", 2, puntmaster4$GameWeather)
+
+Bad<-c("Rain", "Snow", "Thunder Storms")
+
+puntmaster4$GameWeather<-gsub("Rain", 3, puntmaster4$GameWeather)
+puntmaster4$GameWeather<-gsub("Snow", 3, puntmaster4$GameWeather)
+puntmaster4$GameWeather<-gsub("Thunder Storms", 3, puntmaster4$GameWeather)
+
+puntmaster4$GameWeather<-as.factor(puntmaster4$GameWeather)
+puntmaster4$NaturalTurf<-as.factor(puntmaster4$NaturalTurf)
+
+summary(puntmaster4$NaturalTurf)
+
+puntmasterna<-complete.cases(puntmaster4)
+
+puntmaster4<-puntmaster4[puntmasterna,]
+
+which(puntmasterna==FALSE)
+
+randindex<-sample(1:dim(puntmaster4)[1])
+traindata<-puntmaster4[randindex[1:8856],]
+testdata<-puntmaster4[randindex[8857:13284],]
+
+rm(gamedata, playinformation, playplayerrole)
+
+#Running a random forest based on our most recent data frame. He's not good, but he is trying.
+#The problem is trying to predict a small handful of ones in an ocean of zeros 
+#is incredibly difficult. We are surprised it even made an 
+#attempt to guess at a couple concussion plays
+
+rf<-randomForest(Concussion ~., data=puntmaster4)
+
+sum(rf$err.rate[,2])/length(rf$err.rate)
+
+sum(rf$err.rate[,3])/length(rf$err.rate)
+
+#no benefits from more trees
+rf2<-randomForest(Concussion ~., data=puntmaster4, ntree=1000)
+
+#KSVM actually predicts 2 concussion correctly, but gets the rest of the data wrong.
+#It guessed concussion on everything, which means there is most likely more, and better factors
+#that can predict these concussions, but they may not be in this dataset.
+ML2<-ksvm(Concussion~NaturalTurf+Score_difference+Quarter+GameWeather, data=traindata, kernel="polydot", kpar="automatic", C=5, cross=3, prob.model=TRUE)
+
+prediction<-predict(ML2, testdata)
+
+comptable<-data.frame(testdata$Concussion, prediction)
+
+comptable$prediction<-as.numeric(comptable$prediction)
+
+length(which(comptable$prediction==1&comptable$prediction==comptable$testdata.Concussion))
+comptable
+
+#Once again, 
+#what we are testing for is so small in comparison to our data, it is going to be extremely hard
+#to teach a machine to rout out the main causes of these events. But, it may be possible
+#with more data.
+
+length(which(puntmaster$Concussion==1))
+
+
+

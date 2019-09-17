@@ -1,0 +1,157 @@
+---
+#title: "DecisionTreeMining.Rmd"
+#author: "Richard Paterson"
+#date: "Jun 15, 2019"
+#course: IST 707 Data Analytics"
+---
+
+## The objective of this code os to Transform the data anc create a workable output set
+
+
+```{r setup, include=TRUE}
+
+#install.packages("nnet")
+
+knitr::opts_chunk$set(echo = FALSE)
+## ONCE: install.packages("wordcloud")
+library(wordcloud)
+#install.packages('tm')
+library(tm)
+library(stringr)
+#install.packages("SnowballC")
+library(SnowballC)
+## ONCE: install.packages("slam")
+library(slam)
+library(cluster)
+#library(rsq, quietly=T)
+#library(plyr, quietly=T)
+library(dplyr, quietly=T)
+#library(sqldf, quietly=T)
+#library(ggplot2, quietly=T)
+#library(stats, quietly=T)
+#library(reshape2, quietly=T)
+library(RWeka, quietly=T)
+#install.packages("partykit") #once only
+#library(partykit)
+#using numerically converted attributes (sans churn column)
+#install.packages("factoextra")
+library(factoextra)
+#install.packages("stringr") # once only
+library(stringr)
+library(arulesViz, quietly=T)
+#library(stringi, quietly=T)
+#e1071 for svm
+#install.packages("e1071")
+#library(e1071)
+# for randomFOrest
+#library(randomForest)
+# https://www.rdocumentation.org/packages/kernlab/versions/0.9-27/topics/ksvm
+#library(kernlab, quietly=T) #ksvm
+```
+
+# IST 707 - Final Project - Decision Tree Mining
+
+## Step 1: Read Ted Transformed file and extract tags for mining
+
+
+```{r readindata}
+
+cat ('FP : Start')
+
+setwd('C:/Users/Richpat/Documents/@syracuse coursework/@IST 707 Data Analytics (R)/finalproject')
+
+#Read the data in and create "basket" of tags for Apriori
+
+InFile="./ted-talks/tedtfm.csv"
+tedtfm<-read.csv(InFile, sep=",", na.string=c(""))
+
+tedtfm$TXThighrated<-ifelse(tedtfm$highrated==1,'highlyrated', 'nothighlyrated')
+tedtfm$TXTpopularity<-ifelse(tedtfm$popularity==1,'mostpopular', 'lesspopular')
+
+
+```
+```{r}
+library (jsonlite)
+tedR<-data.frame(tedtfm$rating)
+colnames(tedR)<-c('rating')
+len <- tedR %>% summarise(sno = n())
+tedR$sno <- seq(1,as.numeric(len))
+
+#reading the values as json to get the values in rows
+df1 <- c()
+for (i in 1:length(tedR[,1]))
+  {
+    df <- fromJSON(str_replace_all(tedR$rating[i],"'",'"'))
+    df$sno <- i 
+    df1 <- rbind(df,df1)
+}
+#Creating a table with the ratings
+ted_ratings <- df1
+
+
+```
+
+
+
+```{r J48_Iteration_1, fig.width=10,fig.height=6}
+
+J48oneDF<-as.data.frame(tedtfm$comments)
+J48oneDF$duration<-tedtfm$duration
+J48oneDF$num_speaker<-tedtfm$num_speaker
+J48oneDF$views<-tedtfm$views
+J48oneDF$sentiment<-tedtfm$sentiment
+J48oneDF$negativecount<-tedtfm$negativecount
+J48oneDF$neutralcount<-tedtfm$neutralcount
+J48oneDF$positivecount<-tedtfm$positivecount
+J48oneDF$TransHasApplause<-tedtfm$TransHasApplause
+J48oneDF$TransHasLaughter<-tedtfm$TransHasLaughter
+J48oneDF$languages<-tedtfm$languages
+J48oneDF$highrated<-tedtfm$highrated
+#J48oneDF$popularity<-tedtfm$popularity
+
+library(tidyr)
+J48oneDF$sno <- seq(1,as.numeric(len))
+J48oneDF<-df1 %>% group_by(sno,name) %>% 
+  summarise(count_name = sum(count)) %>% spread(name,count_name) %>% ungroup() %>%
+  left_join(J48oneDF,by = "sno")
+J48oneDF<-J48oneDF[,-1]
+
+#ClusterMdf<-floor(ClusterMdf)
+#J48oneDF$author<-str_split_fixed(as.character(rownames(ClusterMdf)), '_', 2)[,1] #split name and add 1 iteration as author
+J48oneDF <- J48oneDF %>% mutate_if(is.numeric,as.character) #transform anything numeric to character
+J48oneDF <- J48oneDF %>% mutate_if(is.character,as.factor) #transform everything to factor
+
+j48_1 <- J48(highrated ~ . , data = J48oneDF, control = Weka_control(M=5, C=0.5)  )
+j48_1
+#summary(j48_1)
+
+plot(j48_1)
+
+eval_j48_1 <- evaluate_Weka_classifier(j48_1, numFolds = 10, complexity = FALSE, 
+    seed = 1, class = TRUE)
+eval_j48_1
+
+
+
+```
+
+```{r}
+J48twoDF<-J48oneDF
+J48twoDF<-J48twoDF[,-ncol(J48twoDF)]
+J48twoDF$popularity<-as.factor(tedtfm$popularity)
+
+j48_2 <- J48(popularity ~ . , data = J48twoDF, control = Weka_control(M=5, C=0.5)  )
+j48_2
+summary(j48_2)
+
+plot(j48_2)
+
+eval_j48_2 <- evaluate_Weka_classifier(j48_2, numFolds = 10, complexity = FALSE, 
+    seed = 1, class = TRUE)
+eval_j48_2
+
+
+```
+
+
+# END
